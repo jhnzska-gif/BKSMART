@@ -1,0 +1,6 @@
+{
+  "name": "BKSmart - Platform Digital Bimbingan Konseling Sekolah",
+  "description": "Platform digital komprehensif untuk bimbingan konseling sekolah dengan 5 role (Admin, Guru BK, Wali Kelas, Siswa, Kepala Sekolah), pencatatan sesi konseling aman, asesmen siswa, penanganan kasus, dan pelaporan.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

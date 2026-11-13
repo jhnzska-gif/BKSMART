@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # 1. PostgreSQL 16 Database
+  db:
+    image: postgres:16-alpine
+    container_name: bksmart_db
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgrespassword
+      POSTGRES_DB: bksmart_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations/001_initial_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
+      - ./database/seeds/001_seed_data.sql:/docker-entrypoint-initdb.d/02_seeds.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d bksmart_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bksmart_network
+
+  # 2. Golang REST API Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bksmart_backend
+    restart: always
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://postgres:postgrespassword@db:5432/bksmart_db?sslmode=disable"
+      JWT_SECRET: "bksmart-secret-production-key-2025"
+      ENV: "production"
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - bksmart_network
+
+  # 3. React Frontend (Nginx)
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bksmart_frontend
+    restart: always
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - bksmart_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  bksmart_network:
+    driver: bridge
