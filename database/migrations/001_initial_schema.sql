@@ -1,144 +1,208 @@
 -- ==============================================================================
 -- BKSmart (Platform Digital Bimbingan Konseling Sekolah)
--- Database: PostgreSQL 16
--- Initial Migration Schema
+-- Database: NeonDB (PostgreSQL)
+-- Complete Schema Definition
 -- ==============================================================================
 
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 1. ENUMS
-CREATE TYPE user_role AS ENUM ('admin', 'counselor', 'teacher', 'student', 'principal');
-CREATE TYPE counseling_type AS ENUM ('individual', 'group', 'classical', 'home_visit');
-CREATE TYPE guidance_domain AS ENUM ('pribadi', 'sosial', 'belajar', 'karier');
-CREATE TYPE counseling_status AS ENUM ('scheduled', 'in_progress', 'completed', 'cancelled', 'follow_up');
-CREATE TYPE referral_status AS ENUM ('pending', 'accepted', 'scheduled', 'resolved', 'declined');
-CREATE TYPE case_priority AS ENUM ('rendah', 'sedang', 'tinggi', 'darurat');
-CREATE TYPE case_status AS ENUM ('investigasi', 'penanganan', 'tindak_lanjut', 'selesai');
-
--- 2. USERS TABLE
 CREATE TABLE IF NOT EXISTS users (
-    id VARCHAR(64) PRIMARY KEY,
-    username VARCHAR(64) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    name VARCHAR(128) NOT NULL,
-    email VARCHAR(128) UNIQUE,
-    role user_role NOT NULL DEFAULT 'student',
-    nip_or_nisn VARCHAR(32),
-    phone VARCHAR(32),
-    assigned_class VARCHAR(32),
-    active BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  username TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'student',
+  avatar TEXT,
+  nip_or_nisn TEXT DEFAULT '',
+  phone TEXT DEFAULT '',
+  assigned_class TEXT,
+  grade_level TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TEXT NOT NULL
 );
 
--- 3. MAJORS & CLASSES
 CREATE TABLE IF NOT EXISTS majors (
-    id VARCHAR(32) PRIMARY KEY,
-    code VARCHAR(16) UNIQUE NOT NULL,
-    name VARCHAR(128) NOT NULL,
-    head_of_major VARCHAR(128)
+  id TEXT PRIMARY KEY,
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  head_of_major TEXT
+);
+
+CREATE TABLE IF NOT EXISTS academic_years (
+  id TEXT PRIMARY KEY,
+  year TEXT NOT NULL,
+  semester TEXT NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE IF NOT EXISTS teachers (
+  id TEXT PRIMARY KEY,
+  nip TEXT NOT NULL,
+  name TEXT NOT NULL,
+  gender TEXT NOT NULL DEFAULT 'L',
+  email TEXT NOT NULL DEFAULT '',
+  phone TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT 'teacher',
+  specialization TEXT,
+  assigned_class TEXT
 );
 
 CREATE TABLE IF NOT EXISTS school_classes (
-    id VARCHAR(32) PRIMARY KEY,
-    name VARCHAR(32) UNIQUE NOT NULL,
-    grade VARCHAR(4) NOT NULL,
-    major_id VARCHAR(32) REFERENCES majors(id) ON DELETE SET NULL,
-    homeroom_teacher_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-    student_count INT DEFAULT 0,
-    academic_year VARCHAR(16) NOT NULL
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  grade TEXT NOT NULL,
+  major_id TEXT NOT NULL,
+  major_name TEXT NOT NULL,
+  homeroom_teacher_id TEXT,
+  homeroom_teacher_name TEXT,
+  student_count INTEGER NOT NULL DEFAULT 0,
+  academic_year TEXT NOT NULL
 );
 
--- 4. STUDENTS TABLE
 CREATE TABLE IF NOT EXISTS students (
-    id VARCHAR(64) PRIMARY KEY,
-    nisn VARCHAR(16) UNIQUE NOT NULL,
-    nis VARCHAR(16) UNIQUE NOT NULL,
-    name VARCHAR(128) NOT NULL,
-    gender CHAR(1) CHECK (gender IN ('L', 'P')),
-    class_id VARCHAR(32) REFERENCES school_classes(id) ON DELETE SET NULL,
-    major_id VARCHAR(32) REFERENCES majors(id) ON DELETE SET NULL,
-    academic_year VARCHAR(16) NOT NULL,
-    parent_name VARCHAR(128),
-    parent_phone VARCHAR(32),
-    student_phone VARCHAR(32),
-    address TEXT,
-    status VARCHAR(16) DEFAULT 'active',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  nisn TEXT NOT NULL,
+  nis TEXT NOT NULL,
+  name TEXT NOT NULL,
+  gender TEXT NOT NULL DEFAULT 'L',
+  class_id TEXT NOT NULL,
+  class_name TEXT NOT NULL,
+  major_id TEXT NOT NULL,
+  major_name TEXT NOT NULL,
+  academic_year TEXT NOT NULL,
+  parent_name TEXT NOT NULL DEFAULT '-',
+  parent_phone TEXT NOT NULL DEFAULT '-',
+  student_phone TEXT NOT NULL DEFAULT '-',
+  address TEXT NOT NULL DEFAULT '-',
+  status TEXT NOT NULL DEFAULT 'active',
+  counseling_count INTEGER NOT NULL DEFAULT 0,
+  open_cases_count INTEGER NOT NULL DEFAULT 0
 );
 
--- 5. COUNSELING SESSIONS (With Confidential Notes Isolation)
 CREATE TABLE IF NOT EXISTS counseling_sessions (
-    id VARCHAR(64) PRIMARY KEY,
-    ticket_number VARCHAR(32) UNIQUE NOT NULL,
-    student_id VARCHAR(64) NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    counselor_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    counseling_type counseling_type NOT NULL DEFAULT 'individual',
-    domain guidance_domain NOT NULL DEFAULT 'pribadi',
-    session_date DATE NOT NULL,
-    session_time TIME NOT NULL,
-    location VARCHAR(128) DEFAULT 'Ruang BK',
-    status counseling_status NOT NULL DEFAULT 'scheduled',
-    problem_summary TEXT NOT NULL,
-    confidential_notes TEXT, -- PRIVAT / RAHASIA HANYA UNTUK GURU BK
-    action_plan TEXT,
-    outcome_summary TEXT,
-    follow_up_date DATE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  ticket_number TEXT UNIQUE NOT NULL,
+  student_id TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_class TEXT NOT NULL,
+  counselor_id TEXT NOT NULL,
+  counselor_name TEXT NOT NULL,
+  type TEXT NOT NULL DEFAULT 'individual',
+  domain TEXT NOT NULL DEFAULT 'pribadi',
+  session_date TEXT NOT NULL,
+  session_time TEXT NOT NULL,
+  location TEXT NOT NULL DEFAULT 'Ruang BK',
+  status TEXT NOT NULL DEFAULT 'scheduled',
+  problem_summary TEXT NOT NULL DEFAULT '',
+  confidential_notes TEXT DEFAULT '',
+  action_plan TEXT DEFAULT '',
+  outcome_summary TEXT DEFAULT '',
+  follow_up_date TEXT,
+  created_at TEXT NOT NULL
 );
 
--- 6. REFERRALS (Rujukan dari Wali Kelas)
 CREATE TABLE IF NOT EXISTS referrals (
-    id VARCHAR(64) PRIMARY KEY,
-    referral_number VARCHAR(32) UNIQUE NOT NULL,
-    student_id VARCHAR(64) NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    referred_by_teacher_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    counselor_id VARCHAR(64) REFERENCES users(id) ON DELETE SET NULL,
-    reason TEXT NOT NULL,
-    indicators TEXT[],
-    urgency VARCHAR(16) DEFAULT 'medium',
-    status referral_status NOT NULL DEFAULT 'pending',
-    counselor_feedback TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  referral_number TEXT UNIQUE NOT NULL,
+  student_id TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_class TEXT NOT NULL,
+  referred_by_teacher_id TEXT NOT NULL,
+  referred_by_teacher_name TEXT NOT NULL,
+  counselor_id TEXT,
+  counselor_name TEXT,
+  reason TEXT NOT NULL DEFAULT '',
+  indicators JSONB NOT NULL DEFAULT '[]'::jsonb,
+  urgency TEXT NOT NULL DEFAULT 'medium',
+  status TEXT NOT NULL DEFAULT 'pending',
+  counselor_feedback TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
--- 7. STUDENT CASES (Bimbingan Kasus)
 CREATE TABLE IF NOT EXISTS student_cases (
-    id VARCHAR(64) PRIMARY KEY,
-    case_number VARCHAR(32) UNIQUE NOT NULL,
-    title VARCHAR(255) NOT NULL,
-    student_id VARCHAR(64) NOT NULL REFERENCES students(id) ON DELETE CASCADE,
-    category VARCHAR(32) NOT NULL,
-    priority case_priority NOT NULL DEFAULT 'sedang',
-    status case_status NOT NULL DEFAULT 'investigasi',
-    assigned_counselor_id VARCHAR(64) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-    incident_date DATE NOT NULL,
-    chronology_summary TEXT NOT NULL,
-    confidential_details TEXT, -- SANGAT RAHASIA
-    resolution_notes TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  case_number TEXT UNIQUE NOT NULL,
+  title TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_class TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'kedisiplinan',
+  priority TEXT NOT NULL DEFAULT 'sedang',
+  status TEXT NOT NULL DEFAULT 'investigasi',
+  assigned_counselor_id TEXT NOT NULL,
+  assigned_counselor_name TEXT NOT NULL,
+  incident_date TEXT NOT NULL,
+  chronology_summary TEXT NOT NULL DEFAULT '',
+  confidential_details TEXT DEFAULT '',
+  interventions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  resolution_notes TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
 );
 
--- 8. AUDIT LOGS TABLE
+CREATE TABLE IF NOT EXISTS bk_programs (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  domain TEXT NOT NULL DEFAULT 'pribadi',
+  target_grade TEXT NOT NULL DEFAULT 'Semua',
+  semester TEXT NOT NULL DEFAULT 'Genap',
+  academic_year TEXT NOT NULL DEFAULT '2024/2025',
+  objectives TEXT NOT NULL DEFAULT '',
+  scheduled_month TEXT NOT NULL DEFAULT 'Maret 2025',
+  status TEXT NOT NULL DEFAULT 'planned',
+  completion_percentage INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS assessments (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  code TEXT UNIQUE NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  target_class TEXT NOT NULL DEFAULT 'Semua Kelas',
+  questions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  deadline TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  submission_count INTEGER NOT NULL DEFAULT 0,
+  total_target INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS assessment_submissions (
+  id TEXT PRIMARY KEY,
+  assessment_id TEXT NOT NULL,
+  assessment_title TEXT NOT NULL,
+  student_id TEXT NOT NULL,
+  student_name TEXT NOT NULL,
+  student_class TEXT NOT NULL,
+  submitted_at TEXT NOT NULL,
+  answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  result_summary JSONB NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS bk_materials (
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL,
+  domain TEXT NOT NULL DEFAULT 'pribadi',
+  target_grade TEXT NOT NULL DEFAULT 'Semua Tingkat',
+  author_name TEXT NOT NULL DEFAULT 'Guru BK',
+  summary TEXT NOT NULL DEFAULT '',
+  content TEXT NOT NULL DEFAULT '',
+  has_task BOOLEAN NOT NULL DEFAULT FALSE,
+  task_prompt TEXT DEFAULT '',
+  created_at TEXT NOT NULL,
+  read_count INTEGER NOT NULL DEFAULT 0
+);
+
 CREATE TABLE IF NOT EXISTS audit_logs (
-    id VARCHAR(64) PRIMARY KEY,
-    user_id VARCHAR(64) NOT NULL,
-    user_name VARCHAR(128) NOT NULL,
-    user_role VARCHAR(32) NOT NULL,
-    action VARCHAR(64) NOT NULL,
-    module VARCHAR(32) NOT NULL,
-    description TEXT NOT NULL,
-    ip_address VARCHAR(45) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+  id TEXT PRIMARY KEY,
+  timestamp TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT NOT NULL,
+  user_role TEXT NOT NULL,
+  action TEXT NOT NULL,
+  module TEXT NOT NULL,
+  description TEXT NOT NULL,
+  ip_address TEXT NOT NULL
 );
 
--- Indexes for performance
-CREATE INDEX IF NOT EXISTS idx_students_class ON students(class_id);
-CREATE INDEX IF NOT EXISTS idx_counseling_student ON counseling_sessions(student_id);
+CREATE INDEX IF NOT EXISTS idx_students_class_name ON students(class_name);
 CREATE INDEX IF NOT EXISTS idx_counseling_date ON counseling_sessions(session_date);
-CREATE INDEX IF NOT EXISTS idx_referrals_student ON referrals(student_id);
-CREATE INDEX IF NOT EXISTS idx_cases_student ON student_cases(student_id);
-CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);

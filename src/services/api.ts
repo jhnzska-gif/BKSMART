@@ -10,32 +10,121 @@ import {
   INITIAL_SUBMISSIONS, INITIAL_MATERIALS, INITIAL_AUDIT_LOGS
 } from './mockData';
 
-// Local storage key prefix
-const STORAGE_PREFIX = 'bksmart_';
-
-function getStorage<T>(key: string, defaultVal: T): T {
-  try {
-    const item = localStorage.getItem(STORAGE_PREFIX + key);
-    return item ? JSON.parse(item) : defaultVal;
-  } catch {
-    return defaultVal;
-  }
+interface ClientStore {
+  users: User[];
+  students: Student[];
+  teachers: Teacher[];
+  classes: SchoolClass[];
+  majors: Major[];
+  academicYears: AcademicYear[];
+  counselingSessions: CounselingSession[];
+  referrals: Referral[];
+  cases: StudentCase[];
+  programs: BKProgram[];
+  assessments: Assessment[];
+  submissions: AssessmentSubmission[];
+  materials: BKMaterial[];
+  auditLogs: AuditLog[];
 }
 
-function setStorage<T>(key: string, value: T): void {
-  try {
-    localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(value));
-  } catch (e) {
-    console.error('Storage write error', e);
-  }
-}
+const cloneDefaults = (): ClientStore => ({
+  users: structuredClone(INITIAL_USERS),
+  students: structuredClone(INITIAL_STUDENTS),
+  teachers: structuredClone(INITIAL_TEACHERS),
+  classes: structuredClone(INITIAL_CLASSES),
+  majors: structuredClone(INITIAL_MAJORS),
+  academicYears: structuredClone(INITIAL_ACADEMIC_YEARS),
+  counselingSessions: structuredClone(INITIAL_COUNSELING_SESSIONS),
+  referrals: structuredClone(INITIAL_REFERRALS),
+  cases: structuredClone(INITIAL_CASES),
+  programs: structuredClone(INITIAL_PROGRAMS),
+  assessments: structuredClone(INITIAL_ASSESSMENTS),
+  submissions: structuredClone(INITIAL_SUBMISSIONS),
+  materials: structuredClone(INITIAL_MATERIALS),
+  auditLogs: structuredClone(INITIAL_AUDIT_LOGS),
+});
+
+let store: ClientStore = cloneDefaults();
+let activeRole: UserRole = 'student';
+
+const makeId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
 export class APIService {
+  static setActiveRole(role: UserRole): void {
+    activeRole = role;
+  }
+
+  static async syncFromServer(role?: UserRole): Promise<void> {
+    if (role) {
+      activeRole = role;
+    }
+    try {
+      const response = await fetch('/api/bootstrap', {
+        method: 'GET',
+        headers: {
+          'x-user-role': activeRole,
+        },
+        cache: 'no-store',
+      });
+      if (!response.ok) {
+        throw new Error(`Bootstrap HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      store = {
+        users: Array.isArray(data.users) ? data.users : store.users,
+        students: Array.isArray(data.students) ? data.students : store.students,
+        teachers: Array.isArray(data.teachers) ? data.teachers : store.teachers,
+        classes: Array.isArray(data.classes) ? data.classes : store.classes,
+        majors: Array.isArray(data.majors) ? data.majors : store.majors,
+        academicYears: Array.isArray(data.academicYears) ? data.academicYears : store.academicYears,
+        counselingSessions: Array.isArray(data.counselingSessions)
+          ? data.counselingSessions
+          : store.counselingSessions,
+        referrals: Array.isArray(data.referrals) ? data.referrals : store.referrals,
+        cases: Array.isArray(data.cases) ? data.cases : store.cases,
+        programs: Array.isArray(data.programs) ? data.programs : store.programs,
+        assessments: Array.isArray(data.assessments) ? data.assessments : store.assessments,
+        submissions: Array.isArray(data.submissions) ? data.submissions : store.submissions,
+        materials: Array.isArray(data.materials) ? data.materials : store.materials,
+        auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : store.auditLogs,
+      };
+    } catch (error) {
+      console.error('Failed to sync data from backend API:', error);
+    }
+  }
+
+  private static persist(url: string, method: 'POST' | 'DELETE', body?: unknown): void {
+    fetch(url, {
+      method,
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-role': activeRole,
+      },
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      keepalive: true,
+    })
+      .then((res) => {
+        if (!res.ok) {
+          console.error(`API request failed [${method} ${url}]: HTTP ${res.status}`);
+        }
+      })
+      .catch((err) => {
+        console.error(`API request error [${method} ${url}]:`, err);
+      });
+  }
+
   // Audit logger
-  static logAudit(userId: string, userName: string, userRole: UserRole, action: string, module: AuditLog['module'], description: string) {
-    const logs = getStorage<AuditLog[]>('audit_logs', INITIAL_AUDIT_LOGS);
+  static logAudit(
+    userId: string,
+    userName: string,
+    userRole: UserRole,
+    action: string,
+    module: AuditLog['module'],
+    description: string
+  ) {
     const newLog: AuditLog = {
-      id: 'log-' + Date.now(),
+      id: makeId('log'),
       timestamp: new Date().toISOString(),
       userId,
       userName,
@@ -45,86 +134,81 @@ export class APIService {
       description,
       ipAddress: '127.0.0.1 (Web Portal)',
     };
-    logs.unshift(newLog);
-    setStorage('audit_logs', logs.slice(0, 100)); // retain last 100 logs
+    store.auditLogs = [newLog, ...store.auditLogs].slice(0, 100);
+    this.persist('/api/audit-logs', 'POST', newLog);
   }
 
   static getAuditLogs(): AuditLog[] {
-    return getStorage<AuditLog[]>('audit_logs', INITIAL_AUDIT_LOGS);
+    return store.auditLogs;
+  }
+
+  static deleteMultipleAuditLogs(ids: string[]): void {
+    const idSet = new Set(ids);
+    store.auditLogs = store.auditLogs.filter((l) => !idSet.has(l.id));
+    this.persist('/api/audit-logs/batch-delete', 'POST', { ids });
   }
 
   // USERS
   static getUsers(): User[] {
-    return getStorage<User[]>('users', INITIAL_USERS);
+    return store.users;
   }
 
   static saveUser(user: Partial<User> & { id?: string }): User {
-    const users = this.getUsers();
     if (user.id) {
-      const idx = users.findIndex(u => u.id === user.id);
+      const idx = store.users.findIndex((u) => u.id === user.id);
       if (idx !== -1) {
-        users[idx] = { ...users[idx], ...user } as User;
-        setStorage('users', users);
-        return users[idx];
+        const updated = { ...store.users[idx], ...user } as User;
+        store.users[idx] = updated;
+        this.persist('/api/users', 'POST', updated);
+        return updated;
       }
     }
     const newUser: User = {
-      id: 'u-' + Date.now(),
+      id: makeId('u'),
       username: user.username || 'user' + Math.floor(Math.random() * 1000),
       name: user.name || 'Pengguna Baru',
       email: user.email || '',
       role: user.role || 'student',
-      active: true,
+      active: user.active ?? true,
       nipOrNisn: user.nipOrNisn || '',
       phone: user.phone || '',
       assignedClass: user.assignedClass,
+      gradeLevel: user.gradeLevel,
       createdAt: new Date().toISOString(),
     };
-    users.push(newUser);
-    setStorage('users', users);
+    store.users = [...store.users, newUser];
+    this.persist('/api/users', 'POST', newUser);
     return newUser;
   }
 
   static deleteUser(id: string): void {
-    const users = this.getUsers().filter(u => u.id !== id);
-    setStorage('users', users);
+    store.users = store.users.filter((u) => u.id !== id);
+    this.persist(`/api/users/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleUsers(ids: string[]): void {
     const idSet = new Set(ids);
-    const users = this.getUsers().filter(u => !idSet.has(u.id));
-    setStorage('users', users);
+    store.users = store.users.filter((u) => !idSet.has(u.id));
+    this.persist('/api/users/batch-delete', 'POST', { ids });
   }
 
   // STUDENTS
   static getStudents(): Student[] {
-    const list = getStorage<Student[]>('students', INITIAL_STUDENTS);
-    if (!list || list.length === 0) {
-      setStorage('students', INITIAL_STUDENTS);
-      return INITIAL_STUDENTS;
-    }
-    const existingIds = new Set(list.map(s => s.id));
-    const missing = INITIAL_STUDENTS.filter(s => !existingIds.has(s.id));
-    if (missing.length > 0) {
-      const merged = [...list, ...missing];
-      setStorage('students', merged);
-      return merged;
-    }
-    return list;
+    return store.students;
   }
 
   static saveStudent(student: Partial<Student> & { id?: string }): Student {
-    const students = this.getStudents();
     if (student.id) {
-      const idx = students.findIndex(s => s.id === student.id);
+      const idx = store.students.findIndex((s) => s.id === student.id);
       if (idx !== -1) {
-        students[idx] = { ...students[idx], ...student } as Student;
-        setStorage('students', students);
-        return students[idx];
+        const updated = { ...store.students[idx], ...student } as Student;
+        store.students[idx] = updated;
+        this.persist('/api/students', 'POST', updated);
+        return updated;
       }
     }
     const newStudent: Student = {
-      id: 's-' + Date.now(),
+      id: makeId('s'),
       nisn: student.nisn || '00' + Math.floor(10000000 + Math.random() * 90000000),
       nis: student.nis || '24' + Math.floor(10000 + Math.random() * 90000),
       name: student.name || 'Siswa Baru',
@@ -139,42 +223,42 @@ export class APIService {
       studentPhone: student.studentPhone || '-',
       address: student.address || '-',
       status: student.status || 'active',
-      counselingCount: 0,
-      openCasesCount: 0,
+      counselingCount: student.counselingCount ?? 0,
+      openCasesCount: student.openCasesCount ?? 0,
     };
-    students.unshift(newStudent);
-    setStorage('students', students);
+    store.students = [newStudent, ...store.students];
+    this.persist('/api/students', 'POST', newStudent);
     return newStudent;
   }
 
   static deleteStudent(id: string): void {
-    const students = this.getStudents().filter(s => s.id !== id);
-    setStorage('students', students);
+    store.students = store.students.filter((s) => s.id !== id);
+    this.persist(`/api/students/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleStudents(ids: string[]): void {
     const idSet = new Set(ids);
-    const students = this.getStudents().filter(s => !idSet.has(s.id));
-    setStorage('students', students);
+    store.students = store.students.filter((s) => !idSet.has(s.id));
+    this.persist('/api/students/batch-delete', 'POST', { ids });
   }
 
   // TEACHERS
   static getTeachers(): Teacher[] {
-    return getStorage<Teacher[]>('teachers', INITIAL_TEACHERS);
+    return store.teachers;
   }
 
   static saveTeacher(teacher: Partial<Teacher> & { id?: string }): Teacher {
-    const teachers = this.getTeachers();
     if (teacher.id) {
-      const idx = teachers.findIndex(t => t.id === teacher.id);
+      const idx = store.teachers.findIndex((t) => t.id === teacher.id);
       if (idx !== -1) {
-        teachers[idx] = { ...teachers[idx], ...teacher } as Teacher;
-        setStorage('teachers', teachers);
-        return teachers[idx];
+        const updated = { ...store.teachers[idx], ...teacher } as Teacher;
+        store.teachers[idx] = updated;
+        this.persist('/api/teachers', 'POST', updated);
+        return updated;
       }
     }
     const newTeacher: Teacher = {
-      id: 't-' + Date.now(),
+      id: makeId('t'),
       nip: teacher.nip || '199' + Math.floor(100000000000 + Math.random() * 900000000000),
       name: teacher.name || 'Guru Baru',
       gender: teacher.gender || 'L',
@@ -184,39 +268,39 @@ export class APIService {
       specialization: teacher.specialization,
       assignedClass: teacher.assignedClass,
     };
-    teachers.push(newTeacher);
-    setStorage('teachers', teachers);
+    store.teachers = [...store.teachers, newTeacher];
+    this.persist('/api/teachers', 'POST', newTeacher);
     return newTeacher;
   }
 
   static deleteTeacher(id: string): void {
-    const teachers = this.getTeachers().filter(t => t.id !== id);
-    setStorage('teachers', teachers);
+    store.teachers = store.teachers.filter((t) => t.id !== id);
+    this.persist(`/api/teachers/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleTeachers(ids: string[]): void {
     const idSet = new Set(ids);
-    const teachers = this.getTeachers().filter(t => !idSet.has(t.id));
-    setStorage('teachers', teachers);
+    store.teachers = store.teachers.filter((t) => !idSet.has(t.id));
+    this.persist('/api/teachers/batch-delete', 'POST', { ids });
   }
 
   // CLASSES & MAJORS & ACADEMIC YEARS
   static getClasses(): SchoolClass[] {
-    return getStorage<SchoolClass[]>('classes', INITIAL_CLASSES);
+    return store.classes;
   }
 
   static saveClass(item: Partial<SchoolClass> & { id?: string }): SchoolClass {
-    const classes = this.getClasses();
     if (item.id) {
-      const idx = classes.findIndex(c => c.id === item.id);
+      const idx = store.classes.findIndex((c) => c.id === item.id);
       if (idx !== -1) {
-        classes[idx] = { ...classes[idx], ...item } as SchoolClass;
-        setStorage('classes', classes);
-        return classes[idx];
+        const updated = { ...store.classes[idx], ...item } as SchoolClass;
+        store.classes[idx] = updated;
+        this.persist('/api/classes', 'POST', updated);
+        return updated;
       }
     }
     const newClass: SchoolClass = {
-      id: 'c-' + Date.now(),
+      id: makeId('c'),
       name: item.name || 'Kelas Baru',
       grade: item.grade || '10',
       majorId: item.majorId || 'm-1',
@@ -226,46 +310,48 @@ export class APIService {
       homeroomTeacherId: item.homeroomTeacherId,
       homeroomTeacherName: item.homeroomTeacherName,
     };
-    classes.push(newClass);
-    setStorage('classes', classes);
+    store.classes = [...store.classes, newClass];
+    this.persist('/api/classes', 'POST', newClass);
     return newClass;
   }
 
   static deleteClass(id: string): void {
-    setStorage('classes', this.getClasses().filter(c => c.id !== id));
+    store.classes = store.classes.filter((c) => c.id !== id);
+    this.persist(`/api/classes/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleClasses(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('classes', this.getClasses().filter(c => !idSet.has(c.id)));
+    store.classes = store.classes.filter((c) => !idSet.has(c.id));
+    this.persist('/api/classes/batch-delete', 'POST', { ids });
   }
 
   static getMajors(): Major[] {
-    return getStorage<Major[]>('majors', INITIAL_MAJORS);
+    return store.majors;
   }
 
   static getAcademicYears(): AcademicYear[] {
-    return getStorage<AcademicYear[]>('academic_years', INITIAL_ACADEMIC_YEARS);
+    return store.academicYears;
   }
 
   // COUNSELING SESSIONS
   static getCounselingSessions(): CounselingSession[] {
-    return getStorage<CounselingSession[]>('counseling_sessions', INITIAL_COUNSELING_SESSIONS);
+    return store.counselingSessions;
   }
 
   static saveCounselingSession(session: Partial<CounselingSession> & { id?: string }): CounselingSession {
-    const sessions = this.getCounselingSessions();
     if (session.id) {
-      const idx = sessions.findIndex(s => s.id === session.id);
+      const idx = store.counselingSessions.findIndex((s) => s.id === session.id);
       if (idx !== -1) {
-        sessions[idx] = { ...sessions[idx], ...session } as CounselingSession;
-        setStorage('counseling_sessions', sessions);
-        return sessions[idx];
+        const updated = { ...store.counselingSessions[idx], ...session } as CounselingSession;
+        store.counselingSessions[idx] = updated;
+        this.persist('/api/counseling-sessions', 'POST', updated);
+        return updated;
       }
     }
-    const count = sessions.length + 1;
+    const count = store.counselingSessions.length + 1;
     const newSession: CounselingSession = {
-      id: 'cs-' + Date.now(),
+      id: makeId('cs'),
       ticketNumber: `BK-2025-${String(count).padStart(3, '0')}`,
       studentId: session.studentId || 's-1',
       studentName: session.studentName || 'Siswa',
@@ -285,38 +371,44 @@ export class APIService {
       followUpDate: session.followUpDate,
       createdAt: new Date().toISOString(),
     };
-    sessions.unshift(newSession);
-    setStorage('counseling_sessions', sessions);
+    store.counselingSessions = [newSession, ...store.counselingSessions];
+    this.persist('/api/counseling-sessions', 'POST', newSession);
     return newSession;
   }
 
   static deleteCounselingSession(id: string): void {
-    setStorage('counseling_sessions', this.getCounselingSessions().filter(s => s.id !== id));
+    store.counselingSessions = store.counselingSessions.filter((s) => s.id !== id);
+    this.persist(`/api/counseling-sessions/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleCounselingSessions(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('counseling_sessions', this.getCounselingSessions().filter(s => !idSet.has(s.id)));
+    store.counselingSessions = store.counselingSessions.filter((s) => !idSet.has(s.id));
+    this.persist('/api/counseling-sessions/batch-delete', 'POST', { ids });
   }
 
   // REFERRALS
   static getReferrals(): Referral[] {
-    return getStorage<Referral[]>('referrals', INITIAL_REFERRALS);
+    return store.referrals;
   }
 
   static saveReferral(ref: Partial<Referral> & { id?: string }): Referral {
-    const refs = this.getReferrals();
     if (ref.id) {
-      const idx = refs.findIndex(r => r.id === ref.id);
+      const idx = store.referrals.findIndex((r) => r.id === ref.id);
       if (idx !== -1) {
-        refs[idx] = { ...refs[idx], ...ref, updatedAt: new Date().toISOString() } as Referral;
-        setStorage('referrals', refs);
-        return refs[idx];
+        const updated = {
+          ...store.referrals[idx],
+          ...ref,
+          updatedAt: new Date().toISOString(),
+        } as Referral;
+        store.referrals[idx] = updated;
+        this.persist('/api/referrals', 'POST', updated);
+        return updated;
       }
     }
-    const count = refs.length + 1;
+    const count = store.referrals.length + 1;
     const newRef: Referral = {
-      id: 'ref-' + Date.now(),
+      id: makeId('ref'),
       referralNumber: `RUJ-2025-${String(count).padStart(2, '0')}`,
       studentId: ref.studentId || '',
       studentName: ref.studentName || '',
@@ -328,43 +420,49 @@ export class APIService {
       reason: ref.reason || '',
       indicators: ref.indicators || [],
       urgency: ref.urgency || 'medium',
-      status: 'pending',
-      counselorFeedback: '',
+      status: ref.status || 'pending',
+      counselorFeedback: ref.counselorFeedback || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    refs.unshift(newRef);
-    setStorage('referrals', refs);
+    store.referrals = [newRef, ...store.referrals];
+    this.persist('/api/referrals', 'POST', newRef);
     return newRef;
   }
 
   static deleteReferral(id: string): void {
-    setStorage('referrals', this.getReferrals().filter(r => r.id !== id));
+    store.referrals = store.referrals.filter((r) => r.id !== id);
+    this.persist(`/api/referrals/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleReferrals(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('referrals', this.getReferrals().filter(r => !idSet.has(r.id)));
+    store.referrals = store.referrals.filter((r) => !idSet.has(r.id));
+    this.persist('/api/referrals/batch-delete', 'POST', { ids });
   }
 
   // STUDENT CASES
   static getCases(): StudentCase[] {
-    return getStorage<StudentCase[]>('cases', INITIAL_CASES);
+    return store.cases;
   }
 
   static saveCase(caseItem: Partial<StudentCase> & { id?: string }): StudentCase {
-    const cases = this.getCases();
     if (caseItem.id) {
-      const idx = cases.findIndex(c => c.id === caseItem.id);
+      const idx = store.cases.findIndex((c) => c.id === caseItem.id);
       if (idx !== -1) {
-        cases[idx] = { ...cases[idx], ...caseItem, updatedAt: new Date().toISOString() } as StudentCase;
-        setStorage('cases', cases);
-        return cases[idx];
+        const updated = {
+          ...store.cases[idx],
+          ...caseItem,
+          updatedAt: new Date().toISOString(),
+        } as StudentCase;
+        store.cases[idx] = updated;
+        this.persist('/api/cases', 'POST', updated);
+        return updated;
       }
     }
-    const count = cases.length + 1;
+    const count = store.cases.length + 1;
     const newCase: StudentCase = {
-      id: 'case-' + Date.now(),
+      id: makeId('case'),
       caseNumber: `KASUS-2025-${String(count).padStart(3, '0')}`,
       title: caseItem.title || 'Kasus Bimbingan Siswa',
       studentId: caseItem.studentId || '',
@@ -379,40 +477,43 @@ export class APIService {
       chronologySummary: caseItem.chronologySummary || '',
       confidentialDetails: caseItem.confidentialDetails || '',
       interventions: caseItem.interventions || [],
+      resolutionNotes: caseItem.resolutionNotes || '',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    cases.unshift(newCase);
-    setStorage('cases', cases);
+    store.cases = [newCase, ...store.cases];
+    this.persist('/api/cases', 'POST', newCase);
     return newCase;
   }
 
   static deleteCase(id: string): void {
-    setStorage('cases', this.getCases().filter(c => c.id !== id));
+    store.cases = store.cases.filter((c) => c.id !== id);
+    this.persist(`/api/cases/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleCases(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('cases', this.getCases().filter(c => !idSet.has(c.id)));
+    store.cases = store.cases.filter((c) => !idSet.has(c.id));
+    this.persist('/api/cases/batch-delete', 'POST', { ids });
   }
 
   // PROGRAMS
   static getPrograms(): BKProgram[] {
-    return getStorage<BKProgram[]>('programs', INITIAL_PROGRAMS);
+    return store.programs;
   }
 
   static saveProgram(program: Partial<BKProgram> & { id?: string }): BKProgram {
-    const list = this.getPrograms();
     if (program.id) {
-      const idx = list.findIndex(p => p.id === program.id);
+      const idx = store.programs.findIndex((p) => p.id === program.id);
       if (idx !== -1) {
-        list[idx] = { ...list[idx], ...program } as BKProgram;
-        setStorage('programs', list);
-        return list[idx];
+        const updated = { ...store.programs[idx], ...program } as BKProgram;
+        store.programs[idx] = updated;
+        this.persist('/api/programs', 'POST', updated);
+        return updated;
       }
     }
     const newProg: BKProgram = {
-      id: 'prog-' + Date.now(),
+      id: makeId('prog'),
       title: program.title || 'Program Baru',
       domain: program.domain || 'pribadi',
       targetGrade: program.targetGrade || 'Semua',
@@ -423,27 +524,29 @@ export class APIService {
       status: program.status || 'planned',
       completionPercentage: program.completionPercentage || 0,
     };
-    list.push(newProg);
-    setStorage('programs', list);
+    store.programs = [...store.programs, newProg];
+    this.persist('/api/programs', 'POST', newProg);
     return newProg;
   }
 
   static deleteProgram(id: string): void {
-    setStorage('programs', this.getPrograms().filter(p => p.id !== id));
+    store.programs = store.programs.filter((p) => p.id !== id);
+    this.persist(`/api/programs/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultiplePrograms(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('programs', this.getPrograms().filter(p => !idSet.has(p.id)));
+    store.programs = store.programs.filter((p) => !idSet.has(p.id));
+    this.persist('/api/programs/batch-delete', 'POST', { ids });
   }
 
   // ASSESSMENTS
   static getAssessments(): Assessment[] {
-    return getStorage<Assessment[]>('assessments', INITIAL_ASSESSMENTS);
+    return store.assessments;
   }
 
   static getSubmissions(): AssessmentSubmission[] {
-    return getStorage<AssessmentSubmission[]>('submissions', INITIAL_SUBMISSIONS);
+    return store.submissions;
   }
 
   static submitAssessment(
@@ -453,9 +556,7 @@ export class APIService {
     studentClass: string,
     answers: Record<string, string>
   ): AssessmentSubmission {
-    const assessments = this.getAssessments();
-    const asm = assessments.find(a => a.id === assessmentId);
-    const submissions = this.getSubmissions();
+    const asm = store.assessments.find((a) => a.id === assessmentId);
 
     // Calculate score / dominant type (no clinical diagnosis - purely guidance typology)
     let dominantType = 'Seimbang';
@@ -463,7 +564,7 @@ export class APIService {
 
     if (asm?.code === 'GAYA-BELAJAR-VAK') {
       let v = 0, a = 0, k = 0;
-      Object.values(answers).forEach(val => {
+      Object.values(answers).forEach((val) => {
         if (val === 'V') v++;
         if (val === 'A') a++;
         if (val === 'K') k++;
@@ -484,7 +585,7 @@ export class APIService {
     }
 
     const newSub: AssessmentSubmission = {
-      id: 'sub-' + Date.now(),
+      id: makeId('sub'),
       assessmentId,
       assessmentTitle: asm ? asm.title : 'Asesmen BK',
       studentId,
@@ -496,38 +597,35 @@ export class APIService {
         dominantType,
         needsAnalysis: ['Pengembangan strategi belajar mandiri'],
         counselorRecommendation: recs.join(' '),
-      }
+      },
     };
 
-    submissions.unshift(newSub);
-    setStorage('submissions', submissions);
-
-    // update count
+    store.submissions = [newSub, ...store.submissions];
     if (asm) {
       asm.submissionCount += 1;
-      setStorage('assessments', assessments);
     }
 
+    this.persist('/api/assessments/submit', 'POST', newSub);
     return newSub;
   }
 
   // MATERIALS
   static getMaterials(): BKMaterial[] {
-    return getStorage<BKMaterial[]>('materials', INITIAL_MATERIALS);
+    return store.materials;
   }
 
   static saveMaterial(mat: Partial<BKMaterial> & { id?: string }): BKMaterial {
-    const list = this.getMaterials();
     if (mat.id) {
-      const idx = list.findIndex(m => m.id === mat.id);
+      const idx = store.materials.findIndex((m) => m.id === mat.id);
       if (idx !== -1) {
-        list[idx] = { ...list[idx], ...mat } as BKMaterial;
-        setStorage('materials', list);
-        return list[idx];
+        const updated = { ...store.materials[idx], ...mat } as BKMaterial;
+        store.materials[idx] = updated;
+        this.persist('/api/materials', 'POST', updated);
+        return updated;
       }
     }
     const newMat: BKMaterial = {
-      id: 'mat-' + Date.now(),
+      id: makeId('mat'),
       title: mat.title || 'Materi BK Baru',
       domain: mat.domain || 'pribadi',
       targetGrade: mat.targetGrade || 'Semua Tingkat',
@@ -539,30 +637,39 @@ export class APIService {
       createdAt: new Date().toISOString(),
       readCount: 0,
     };
-    list.unshift(newMat);
-    setStorage('materials', list);
+    store.materials = [newMat, ...store.materials];
+    this.persist('/api/materials', 'POST', newMat);
     return newMat;
   }
 
   static deleteMaterial(id: string): void {
-    setStorage('materials', this.getMaterials().filter(m => m.id !== id));
+    store.materials = store.materials.filter((m) => m.id !== id);
+    this.persist(`/api/materials/${encodeURIComponent(id)}`, 'DELETE');
   }
 
   static deleteMultipleMaterials(ids: string[]): void {
     const idSet = new Set(ids);
-    setStorage('materials', this.getMaterials().filter(m => !idSet.has(m.id)));
-  }
-
-  static deleteMultipleAuditLogs(ids: string[]): void {
-    const idSet = new Set(ids);
-    setStorage('audit_logs', this.getAuditLogs().filter(l => !idSet.has(l.id)));
+    store.materials = store.materials.filter((m) => !idSet.has(m.id));
+    this.persist('/api/materials/batch-delete', 'POST', { ids });
   }
 
   // IMPORT / EXPORT HELPERS
   static exportStudentsCSV(): string {
     const students = this.getStudents();
-    const headers = ['NISN', 'NIS', 'Nama Lengkap', 'Jenis Kelamin', 'Kelas', 'Jurusan', 'Tahun Ajaran', 'Nama Orang Tua', 'No HP Ortu', 'No HP Siswa', 'Status'];
-    const rows = students.map(s => [
+    const headers = [
+      'NISN',
+      'NIS',
+      'Nama Lengkap',
+      'Jenis Kelamin',
+      'Kelas',
+      'Jurusan',
+      'Tahun Ajaran',
+      'Nama Orang Tua',
+      'No HP Ortu',
+      'No HP Siswa',
+      'Status',
+    ];
+    const rows = students.map((s) => [
       `"${s.nisn}"`,
       `"${s.nis}"`,
       `"${s.name}"`,
@@ -573,14 +680,36 @@ export class APIService {
       `"${s.parentName}"`,
       `"${s.parentPhone}"`,
       `"${s.studentPhone}"`,
-      `"${s.status}"`
+      `"${s.status}"`,
     ]);
-    return [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+    return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   }
 
   static getStudentCSVTemplate(): string {
-    const headers = ['NISN', 'NIS', 'Nama Lengkap', 'Jenis Kelamin (L/P)', 'Kelas', 'Jurusan', 'Tahun Ajaran', 'Nama Orang Tua', 'No HP Ortu', 'No HP Siswa'];
-    const sample = ['0081234567', '2425001', 'Budi Santoso', 'L', 'X RPL 1', 'Rekayasa Perangkat Lunak', '2024/2025', 'Joko Widodo', '0812-3456-7890', '0813-9988-7766'];
+    const headers = [
+      'NISN',
+      'NIS',
+      'Nama Lengkap',
+      'Jenis Kelamin (L/P)',
+      'Kelas',
+      'Jurusan',
+      'Tahun Ajaran',
+      'Nama Orang Tua',
+      'No HP Ortu',
+      'No HP Siswa',
+    ];
+    const sample = [
+      '0081234567',
+      '2425001',
+      'Budi Santoso',
+      'L',
+      'X RPL 1',
+      'Rekayasa Perangkat Lunak',
+      '2024/2025',
+      'Joko Widodo',
+      '0812-3456-7890',
+      '0813-9988-7766',
+    ];
     return [headers.join(','), sample.join(',')].join('\n');
   }
 
@@ -589,26 +718,24 @@ export class APIService {
     if (lines.length < 2) {
       return { importedCount: 0, errors: ['File CSV kosong atau tidak memiliki baris data.'] };
     }
-    const currentStudents = this.getStudents();
-    let count = 0;
+    const importedStudents: Student[] = [];
     const errors: string[] = [];
 
     for (let i = 1; i < lines.length; i++) {
       const line = lines[i].trim();
       if (!line) continue;
-      // parse CSV line with quotes support
-      const cols = line.split(',').map(c => c.replace(/^"|"$/g, '').trim());
+      const cols = line.split(',').map((c) => c.replace(/^"|"$/g, '').trim());
       if (cols.length < 3) {
         errors.push(`Baris ${i + 1}: Format kolom tidak sesuai.`);
         continue;
       }
       const [nisn, nis, name, gender, className, majorName, academicYear, parentName, parentPhone, studentPhone] = cols;
       const newS: Student = {
-        id: 's-' + Date.now() + '-' + i,
+        id: makeId(`s-${i}`),
         nisn: nisn || '00' + Math.floor(10000000 + Math.random() * 90000000),
         nis: nis || '24' + Math.floor(10000 + Math.random() * 90000),
         name: name || 'Siswa Import ' + i,
-        gender: (gender?.toUpperCase() === 'P' ? 'P' : 'L'),
+        gender: gender?.toUpperCase() === 'P' ? 'P' : 'L',
         classId: 'c-1',
         className: className || 'X RPL 1',
         majorId: 'm-1',
@@ -622,27 +749,18 @@ export class APIService {
         counselingCount: 0,
         openCasesCount: 0,
       };
-      currentStudents.unshift(newS);
-      count++;
+      importedStudents.push(newS);
     }
 
-    setStorage('students', currentStudents);
-    return { importedCount: count, errors };
+    if (importedStudents.length > 0) {
+      store.students = [...importedStudents, ...store.students];
+      this.persist('/api/students/import', 'POST', { students: importedStudents });
+    }
+
+    return { importedCount: importedStudents.length, errors };
   }
 
-  // Reset to initial demo data
   static resetToDefaults(): void {
-    localStorage.removeItem(STORAGE_PREFIX + 'users');
-    localStorage.removeItem(STORAGE_PREFIX + 'students');
-    localStorage.removeItem(STORAGE_PREFIX + 'teachers');
-    localStorage.removeItem(STORAGE_PREFIX + 'classes');
-    localStorage.removeItem(STORAGE_PREFIX + 'counseling_sessions');
-    localStorage.removeItem(STORAGE_PREFIX + 'referrals');
-    localStorage.removeItem(STORAGE_PREFIX + 'cases');
-    localStorage.removeItem(STORAGE_PREFIX + 'programs');
-    localStorage.removeItem(STORAGE_PREFIX + 'assessments');
-    localStorage.removeItem(STORAGE_PREFIX + 'submissions');
-    localStorage.removeItem(STORAGE_PREFIX + 'materials');
-    localStorage.removeItem(STORAGE_PREFIX + 'audit_logs');
+    store = cloneDefaults();
   }
 }

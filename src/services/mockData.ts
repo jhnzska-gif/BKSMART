@@ -1,8 +1,8 @@
-import {
+import type {
   User, Student, Teacher, SchoolClass, Major, AcademicYear,
   CounselingSession, Referral, StudentCase, BKProgram,
   Assessment, AssessmentSubmission, BKMaterial, AuditLog
-} from '../types';
+} from '../types/index.ts';
 
 export const INITIAL_USERS: User[] = [
   {

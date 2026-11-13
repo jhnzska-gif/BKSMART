@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
@@ -29,10 +29,15 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { UserRole } from './types';
 
 const AppContent: React.FC = () => {
-  const { currentUser, role } = useAuth();
+  const { currentUser, role, syncVersion } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    setActiveTab('dashboard');
+    setIsMobileSidebarOpen(false);
+  }, [currentUser?.id]);
 
   // If no user is logged in, show the comprehensive multi-role Login Screen
   if (!currentUser) {
@@ -130,7 +135,7 @@ const AppContent: React.FC = () => {
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full">
-          {renderContent()}
+          <div key={syncVersion}>{renderContent()}</div>
         </main>
       </div>
 
