@@ -86,8 +86,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({ isOpen, on
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Pusat Import & Export Data Sekolah"
-      description="Sinkronisasi data master siswa menggunakan format standar CSV/Excel."
+      title="Pusat Restore & Import Data Siswa"
+      description="Pulihkan atau sinkronisasi data master siswa menggunakan format CSV."
       maxWidth="lg"
     >
       <div className="space-y-4 text-xs">

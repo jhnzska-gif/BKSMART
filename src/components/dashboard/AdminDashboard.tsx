@@ -100,7 +100,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
               <span className="text-emerald-700 font-semibold">Lengkap</span>
             </div>
             <p className="font-semibold text-slate-800">Siswa, Rombel, & Penugasan Wali Kelas</p>
-            <p className="text-[11px] text-slate-500 mt-1">Dukungan pagination, seleksi multi-delete, dan export/import CSV</p>
+            <p className="text-[11px] text-slate-500 mt-1">Dukungan pagination, seleksi multi-delete, dan restore/backup data</p>
           </div>
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80">
             <div className="flex items-center justify-between text-slate-500 font-medium mb-1">
@@ -177,11 +177,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             </button>
             <button
               type="button"
-              onClick={() => onNavigate('import_export')}
+              onClick={() => onNavigate('restore_backup')}
               className="w-full text-left p-2.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 transition-colors"
             >
-              <p className="text-xs font-semibold text-slate-900">Import / Export CSV Data</p>
-              <p className="text-[11px] text-slate-500">Unduh template CSV atau ekspor data siswa</p>
+              <p className="text-xs font-semibold text-slate-900">Restore & Backup Database</p>
+              <p className="text-[11px] text-slate-500">Cadangkan snapshot basis data atau pulihkan data</p>
             </button>
           </div>
         </div>

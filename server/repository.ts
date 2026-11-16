@@ -806,4 +806,110 @@ export class BKSmartRepository {
       throw new Error('Gagal menghapus audit log.', { cause: error });
     }
   }
+
+  // ADMIN BACKUP & RESTORE
+  static async createBackupSnapshot() {
+    const data = await this.getBootstrap('counselor');
+    return {
+      meta: {
+        app: 'BKSmart',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+      },
+      data,
+    };
+  }
+
+  static async restoreBackupSnapshot(payload: Record<string, unknown>) {
+    const data = (payload?.data && typeof payload.data === 'object'
+      ? payload.data
+      : payload) as Record<string, unknown>;
+
+    const counts: Record<string, number> = {
+      users: 0,
+      teachers: 0,
+      classes: 0,
+      students: 0,
+      counselingSessions: 0,
+      referrals: 0,
+      cases: 0,
+      programs: 0,
+      materials: 0,
+    };
+
+    if (Array.isArray(data.users)) {
+      for (const u of data.users as User[]) {
+        if (u?.id && u?.username) {
+          await this.saveUser(u);
+          counts.users++;
+        }
+      }
+    }
+    if (Array.isArray(data.teachers)) {
+      for (const t of data.teachers as Teacher[]) {
+        if (t?.id && t?.name) {
+          await this.saveTeacher(t);
+          counts.teachers++;
+        }
+      }
+    }
+    if (Array.isArray(data.classes)) {
+      for (const c of data.classes as SchoolClass[]) {
+        if (c?.id && c?.name) {
+          await this.saveClass(c);
+          counts.classes++;
+        }
+      }
+    }
+    if (Array.isArray(data.students)) {
+      for (const s of data.students as Student[]) {
+        if (s?.id && s?.name) {
+          await this.saveStudent(s);
+          counts.students++;
+        }
+      }
+    }
+    if (Array.isArray(data.counselingSessions)) {
+      for (const cs of data.counselingSessions as CounselingSession[]) {
+        if (cs?.id && cs?.ticketNumber) {
+          await this.saveCounselingSession(cs);
+          counts.counselingSessions++;
+        }
+      }
+    }
+    if (Array.isArray(data.referrals)) {
+      for (const r of data.referrals as Referral[]) {
+        if (r?.id && r?.referralNumber) {
+          await this.saveReferral(r);
+          counts.referrals++;
+        }
+      }
+    }
+    if (Array.isArray(data.cases)) {
+      for (const c of data.cases as StudentCase[]) {
+        if (c?.id && c?.caseNumber) {
+          await this.saveCase(c);
+          counts.cases++;
+        }
+      }
+    }
+    if (Array.isArray(data.programs)) {
+      for (const p of data.programs as BKProgram[]) {
+        if (p?.id && p?.title) {
+          await this.saveProgram(p);
+          counts.programs++;
+        }
+      }
+    }
+    if (Array.isArray(data.materials)) {
+      for (const m of data.materials as BKMaterial[]) {
+        if (m?.id && m?.title) {
+          await this.saveMaterial(m);
+          counts.materials++;
+        }
+      }
+    }
+
+    return counts;
+  }
 }

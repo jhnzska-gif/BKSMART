@@ -760,6 +760,63 @@ export class APIService {
     return { importedCount: importedStudents.length, errors };
   }
 
+  static async createFullBackup(): Promise<{
+    meta: { app: string; version: string; exportedAt: string };
+    data: ClientStore;
+  }> {
+    try {
+      const res = await fetch('/api/admin/backup', {
+        method: 'GET',
+        headers: { 'x-user-role': activeRole },
+        cache: 'no-store',
+      });
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (error) {
+      console.error('Server backup failed, falling back to current session store:', error);
+    }
+    return {
+      meta: {
+        app: 'BKSmart',
+        version: '1.0',
+        exportedAt: new Date().toISOString(),
+      },
+      data: structuredClone(store),
+    };
+  }
+
+  static async restoreFullBackup(
+    payload: unknown
+  ): Promise<{ ok: boolean; counts: Record<string, number>; error?: string }> {
+    try {
+      const res = await fetch('/api/admin/restore', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-role': activeRole,
+        },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        return {
+          ok: false,
+          counts: {},
+          error: json?.error || `HTTP ${res.status}`,
+        };
+      }
+      await this.syncFromServer(activeRole);
+      return { ok: true, counts: json.counts || {} };
+    } catch (error) {
+      return {
+        ok: false,
+        counts: {},
+        error: error instanceof Error ? error.message : 'Gagal menghubungi server restore',
+      };
+    }
+  }
+
   static resetToDefaults(): void {
     store = cloneDefaults();
   }

@@ -9,14 +9,14 @@ import {
   AlertOctagon,
   FileText,
   BarChart3,
-  FileSpreadsheet,
   ShieldAlert,
   BookOpenCheck,
   FolderTree,
   Send,
   Award,
   X,
-  LogOut
+  LogOut,
+  Database
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -132,12 +132,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <BarChart3 className="w-4 h-4" />,
       roles: ['counselor', 'principal', 'admin', 'teacher'],
     },
-    // Import & Export
+    // Restore & Backup (Admin only)
     {
-      id: 'import_export',
-      label: 'Import & Export Data',
-      icon: <FileSpreadsheet className="w-4 h-4" />,
-      roles: ['admin', 'counselor'],
+      id: 'restore_backup',
+      label: 'Restore & Backup',
+      icon: <Database className="w-4 h-4" />,
+      roles: ['admin'],
     },
     // Audit Log
     {

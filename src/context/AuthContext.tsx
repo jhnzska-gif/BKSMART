@@ -130,7 +130,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const canManageCases = role === 'counselor' || role === 'admin';
   const canViewReports =
     role === 'principal' || role === 'counselor' || role === 'admin' || role === 'teacher';
-  const canImportExport = role === 'admin' || role === 'counselor';
+  const canImportExport = role === 'admin';
 
   if (!isReady) {
     return (

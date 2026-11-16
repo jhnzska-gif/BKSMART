@@ -8,9 +8,18 @@ import { BKSmartRepository } from './server/repository.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+function resolvePort(): number {
+  const portFlagIndex = process.argv.indexOf('--port');
+  if (portFlagIndex !== -1 && process.argv[portFlagIndex + 1]) {
+    const parsed = Number(process.argv[portFlagIndex + 1]);
+    if (!Number.isNaN(parsed) && parsed > 0) return parsed;
+  }
+  return Number(process.env.PORT) || 3000;
+}
+
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
+  const PORT = resolvePort();
 
   app.use(express.json({ limit: '5mb' }));
 
@@ -359,14 +368,68 @@ async function startServer() {
     }
   });
 
-  // Vite middleware in development, static dist in production
+  // ADMIN BACKUP & RESTORE
+  app.get('/api/admin/backup', async (req, res) => {
+    try {
+      const roleHeader = String(req.headers['x-user-role'] || '').toLowerCase();
+      if (roleHeader && roleHeader !== 'admin') {
+        res.status(403).json({ error: 'Hanya Admin yang dapat membuat backup penuh database.' });
+        return;
+      }
+      const snapshot = await BKSmartRepository.createBackupSnapshot();
+      res.json(snapshot);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal membuat backup database' });
+    }
+  });
+
+  app.post('/api/admin/restore', async (req, res) => {
+    try {
+      const roleHeader = String(req.headers['x-user-role'] || '').toLowerCase();
+      if (roleHeader && roleHeader !== 'admin') {
+        res.status(403).json({ error: 'Hanya Admin yang dapat melakukan restore database.' });
+        return;
+      }
+      const counts = await BKSmartRepository.restoreBackupSnapshot(req.body || {});
+      res.json({ ok: true, counts });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal memulihkan database dari backup' });
+    }
+  });
+
+  // Vite middleware in development (initialized asynchronously so port 3000 binds immediately),
+  // static dist in production
   if (process.env.NODE_ENV !== 'production') {
-    const { createServer: createViteServer } = await import('vite');
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: 'spa',
+    let viteMiddleware: express.RequestHandler | null = null;
+    const viteReadyPromise = import('vite')
+      .then(({ createServer: createViteServer }) =>
+        createViteServer({
+          server: { middlewareMode: true },
+          appType: 'spa',
+        })
+      )
+      .then((vite) => {
+        viteMiddleware = vite.middlewares as unknown as express.RequestHandler;
+        console.log('Vite dev middleware ready.');
+      })
+      .catch((err) => {
+        console.error('Failed to initialize Vite dev middleware:', err);
+        throw err;
+      });
+
+    app.use(async (req, res, next) => {
+      try {
+        if (!viteMiddleware) {
+          await viteReadyPromise;
+        }
+        if (viteMiddleware) {
+          return viteMiddleware(req, res, next);
+        }
+        next();
+      } catch (err) {
+        next(err);
+      }
     });
-    app.use(vite.middlewares);
   } else {
     const distPath = path.join(__dirname, 'dist');
     app.use(express.static(distPath));

@@ -25,6 +25,7 @@ import { MaterialManagement } from './components/programs/MaterialManagement';
 import { ReportManagement } from './components/reports/ReportManagement';
 import { AuditLogViewer } from './components/audit/AuditLogViewer';
 import { ImportExportModal } from './components/import-export/ImportExportModal';
+import { RestoreBackupPanel } from './components/admin/RestoreBackupPanel';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { UserRole } from './types';
 
@@ -59,7 +60,11 @@ const AppContent: React.FC = () => {
         return <UserManagement />;
 
       case 'students':
-        return <StudentManagement onOpenImport={() => setIsImportModalOpen(true)} />;
+        return (
+          <StudentManagement
+            onOpenImport={role === 'admin' ? () => setIsImportModalOpen(true) : undefined}
+          />
+        );
 
       case 'my_students':
         return <StudentManagement restrictedToClass={currentUser.assignedClass || 'XI RPL 1'} />;
@@ -94,21 +99,12 @@ const AppContent: React.FC = () => {
       case 'reports':
         return <ReportManagement />;
 
+      case 'restore_backup':
       case 'import_export':
-        return (
-          <div className="bg-white rounded-xl border border-slate-200 p-8 text-center space-y-4">
-            <h3 className="text-base font-bold text-slate-900">Manajemen Import & Export Berkas</h3>
-            <p className="text-xs text-slate-500 max-w-md mx-auto">
-              Gunakan modal terpadu untuk sinkronisasi batch data peserta didik menggunakan CSV template resmi atau cadangkan data sekolah.
-            </p>
-            <button
-              type="button"
-              onClick={() => setIsImportModalOpen(true)}
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg shadow-xs"
-            >
-              Buka Jendela Import / Export
-            </button>
-          </div>
+        return role === 'admin' ? (
+          <RestoreBackupPanel onOpenCsvModal={() => setIsImportModalOpen(true)} />
+        ) : (
+          <CounselorDashboard onNavigate={setActiveTab} />
         );
 
       case 'audit_logs':
