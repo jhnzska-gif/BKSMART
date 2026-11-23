@@ -183,19 +183,34 @@ export class APIService {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password }),
+        cache: 'no-store',
       });
-      const json = await response.json();
+      const rawText = await response.text();
+      let json: { user?: User; error?: string } | null = null;
+      try {
+        json = rawText ? (JSON.parse(rawText) as { user?: User; error?: string }) : null;
+      } catch {
+        json = null;
+      }
+
       if (!response.ok || !json?.user) {
         return {
           ok: false,
-          error: json?.error || 'Username atau kata sandi tidak sesuai.',
+          error:
+            json?.error ||
+            (response.status === 404
+              ? 'Endpoint API autentikasi (/api/auth/login) tidak ditemukan (404).'
+              : `Server autentikasi merespons error (HTTP ${response.status}).`),
         };
       }
       return { ok: true, user: json.user as User };
-    } catch {
+    } catch (err) {
       return {
         ok: false,
-        error: 'Gagal menghubungi server autentikasi.',
+        error:
+          err instanceof Error && err.message
+            ? `Gagal menghubungi server autentikasi (${err.message}).`
+            : 'Gagal menghubungi server autentikasi.',
       };
     }
   }

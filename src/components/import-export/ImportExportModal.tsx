@@ -15,7 +15,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({ isOpen, on
   const [activeTab, setActiveTab] = useState<'import' | 'export'>('import');
   const [csvContent, setCsvContent] = useState('');
   const [createUserAccounts, setCreateUserAccounts] = useState(true);
-  const [defaultPassword, setDefaultPassword] = useState('siswa123');
+  const [defaultPassword, setDefaultPassword] = useState('');
   const [resultMessage, setResultMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   const handleDownloadTemplate = () => {
@@ -201,8 +201,8 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({ isOpen, on
                       type="text"
                       value={defaultPassword}
                       onChange={(e) => setDefaultPassword(e.target.value)}
-                      className="px-2 py-1 text-[11px] font-mono bg-white border border-slate-300 rounded w-36"
-                      placeholder="siswa123"
+                      className="px-2 py-1 text-[11px] font-mono bg-white border border-slate-300 rounded w-48"
+                      placeholder="Kosong = gunakan NIS siswa"
                     />
                   </div>
                 )}

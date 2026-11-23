@@ -262,7 +262,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                 });
                 setCreateAccount(role === 'admin');
                 setAccountUsername('');
-                setAccountPassword('siswa123');
+                setAccountPassword('');
                 setIsModalOpen(true);
               }}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs"
@@ -639,7 +639,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                       value={accountPassword}
                       onChange={(e) => setAccountPassword(e.target.value)}
                       className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
-                      placeholder="misal: siswa123"
+                      placeholder="Minimal 4 karakter"
                     />
                   </div>
                 </div>

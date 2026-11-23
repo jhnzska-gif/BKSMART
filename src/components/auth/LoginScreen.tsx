@@ -22,6 +22,7 @@ interface RoleOverview {
   role: UserRole;
   title: string;
   badge: string;
+  shortSubtitle: string;
   themeColor: {
     primary: string;
     badgeBg: string;
@@ -37,6 +38,7 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
     role: 'admin',
     title: 'Administrator Sistem',
     badge: 'Pengelola Master Data & Akun',
+    shortSubtitle: 'Manajemen Sistem',
     themeColor: {
       primary: 'bg-indigo-600 hover:bg-indigo-700 text-white',
       badgeBg: 'bg-indigo-100',
@@ -50,12 +52,13 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Pusat Restore & Backup basis data sekolah',
       'Pengawasan jejak aktivitas audit log keamanan sistem',
     ],
-    accessHint: 'Username: admin · Password: admin123',
+    accessHint: 'Akses khusus Administrator sistem sekolah',
   },
   counselor: {
     role: 'counselor',
     title: 'Guru BK (Konselor Sekolah)',
     badge: 'Akses Konseling Penuh',
+    shortSubtitle: 'Layanan Konseling',
     themeColor: {
       primary: 'bg-emerald-600 hover:bg-emerald-700 text-white',
       badgeBg: 'bg-emerald-100',
@@ -69,12 +72,13 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Pengelolaan asesmen & materi layanan BK',
       'Penanganan rujukan wali kelas & tindak lanjut kasus siswa',
     ],
-    accessHint: 'Username: gurubk · Password: bk123',
+    accessHint: 'Masuk dengan akun Guru BK terdaftar',
   },
   teacher: {
     role: 'teacher',
     title: 'Guru / Wali Kelas',
     badge: 'Pemantau Siswa Binaan',
+    shortSubtitle: 'Pemantau Kelas',
     themeColor: {
       primary: 'bg-amber-600 hover:bg-amber-700 text-white',
       badgeBg: 'bg-amber-100',
@@ -88,12 +92,13 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Memantau status penanganan rujukan dan tindak lanjut',
       'Koordinasi pendampingan belajar bersama konselor',
     ],
-    accessHint: 'Username: walikelas · Password: wali123',
+    accessHint: 'Masuk dengan akun Wali Kelas terdaftar',
   },
   student: {
     role: 'student',
     title: 'Siswa (Peserta Didik)',
     badge: 'Layanan Bimbingan Siswa',
+    shortSubtitle: 'Peserta Didik',
     themeColor: {
       primary: 'bg-blue-600 hover:bg-blue-700 text-white',
       badgeBg: 'bg-blue-100',
@@ -107,12 +112,13 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Melihat hasil rekomendasi belajar dari Guru BK',
       'Membaca modul edukasi & tugas bimbingan',
     ],
-    accessHint: 'Username: siswa · Password: siswa123',
+    accessHint: 'Masuk dengan akun Siswa terdaftar',
   },
   principal: {
     role: 'principal',
     title: 'Kepala Sekolah',
     badge: 'Pimpinan & Evaluasi Manajerial',
+    shortSubtitle: 'Pimpinan Sekolah',
     themeColor: {
       primary: 'bg-rose-700 hover:bg-rose-800 text-white',
       badgeBg: 'bg-rose-100',
@@ -126,23 +132,15 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Rekapitulasi layanan tanpa catatan privat siswa',
       'Cetak dan ekspor rekapitulasi laporan resmi BK',
     ],
-    accessHint: 'Username: kepsek · Password: kepsek123',
+    accessHint: 'Masuk dengan akun Kepala Sekolah terdaftar',
   },
-};
-
-const STARTER_CREDENTIALS: Record<UserRole, { username: string; password: string; shortLabel: string }> = {
-  admin: { username: 'admin', password: 'admin123', shortLabel: 'Admin' },
-  counselor: { username: 'gurubk', password: 'bk123', shortLabel: 'Guru BK' },
-  teacher: { username: 'walikelas', password: 'wali123', shortLabel: 'Wali Kelas' },
-  student: { username: 'siswa', password: 'siswa123', shortLabel: 'Siswa' },
-  principal: { username: 'kepsek', password: 'kepsek123', shortLabel: 'Kepala Sekolah' },
 };
 
 export const LoginScreen: React.FC = () => {
   const { login } = useAuth();
   const [selectedRole, setSelectedRole] = useState<UserRole>('admin');
-  const [username, setUsername] = useState('admin');
-  const [password, setPassword] = useState('admin123');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -150,9 +148,6 @@ export const LoginScreen: React.FC = () => {
   const handleSelectRoleTab = (r: UserRole) => {
     setSelectedRole(r);
     setErrorMessage('');
-    const cred = STARTER_CREDENTIALS[r];
-    setUsername(cred.username);
-    setPassword(cred.password);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -169,7 +164,7 @@ export const LoginScreen: React.FC = () => {
     if (!result.ok) {
       setErrorMessage(
         result.error ||
-          'Username atau kata sandi tidak sesuai. Pastikan akun sudah dibuat oleh Administrator.'
+          'Username atau kata sandi tidak sesuai. Pastikan akun sudah terdaftar di sistem.'
       );
       setIsLoading(false);
     }
@@ -230,7 +225,7 @@ export const LoginScreen: React.FC = () => {
             Masuk ke Portal BKSmart
           </h1>
           <p className="mt-2 text-xs sm:text-sm text-slate-400 max-w-xl mx-auto">
-            Masuk menggunakan akun resmi Anda. Administrator dapat membuat akun untuk Guru BK, Wali Kelas, Siswa, dan Kepala Sekolah setelah login.
+            Silakan masuk menggunakan username dan kata sandi akun resmi sekolah Anda.
           </p>
         </div>
 
@@ -268,8 +263,8 @@ export const LoginScreen: React.FC = () => {
                   <span className="block font-bold text-xs sm:text-sm text-white truncate">
                     {item.title.split(' (')[0]}
                   </span>
-                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate font-mono">
-                    @{STARTER_CREDENTIALS[r].username} · {STARTER_CREDENTIALS[r].password}
+                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate">
+                    {item.shortSubtitle}
                   </span>
                 </div>
               </button>
@@ -329,7 +324,7 @@ export const LoginScreen: React.FC = () => {
 
             <div className="mt-6 pt-4 border-t border-slate-700/60">
               <div className="flex items-center justify-between text-xs text-slate-300 bg-slate-900/50 p-2.5 rounded-lg border border-slate-800">
-                <span className="font-mono text-[11px] text-emerald-400">
+                <span className="text-[11px] text-emerald-400 font-medium">
                   {currentRoleInfo.accessHint}
                 </span>
               </div>
@@ -375,9 +370,10 @@ export const LoginScreen: React.FC = () => {
                     <input
                       type="text"
                       required
+                      autoComplete="username"
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="Masukkan username (contoh: admin)"
+                      placeholder="Masukkan username"
                       className="w-full pl-9 pr-3 py-2.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white font-mono text-slate-800 transition-colors"
                     />
                   </div>
@@ -394,6 +390,7 @@ export const LoginScreen: React.FC = () => {
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
+                      autoComplete="current-password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="Masukkan kata sandi"
@@ -430,40 +427,9 @@ export const LoginScreen: React.FC = () => {
               </form>
             </div>
 
-            <div className="mt-6 pt-5 border-t border-slate-100">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
-                  Daftar Username & Kata Sandi Awal (5 Peran)
-                </span>
-                <span className="text-[10px] text-slate-400">Klik peran untuk mengisi form</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-                {(Object.keys(STARTER_CREDENTIALS) as UserRole[]).map((r) => {
-                  const cred = STARTER_CREDENTIALS[r];
-                  const active = selectedRole === r;
-                  return (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => handleSelectRoleTab(r)}
-                      className={`text-left px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center justify-between transition-colors ${
-                        active
-                          ? 'bg-slate-900 text-white border-slate-900'
-                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span className="font-semibold">{cred.shortLabel}</span>
-                      <span className={`font-mono ${active ? 'text-emerald-300' : 'text-slate-600'}`}>
-                        {cred.username} / {cred.password}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2.5 text-[11px] text-slate-500 leading-relaxed">
-                Setelah masuk sebagai <span className="font-mono font-semibold text-slate-700">admin</span>,
-                Anda dapat mengganti kata sandi akun awal serta menambah akun asli untuk masing-masing guru, siswa, dan kepala sekolah tanpa data dummy.
-              </p>
+            <div className="mt-8 pt-5 border-t border-slate-100 text-[11px] text-slate-500 leading-relaxed">
+              Gunakan username dan kata sandi resmi akun sekolah Anda. Hubungi Administrator
+              apabila Anda belum memiliki akun atau membutuhkan pembaruan kata sandi.
             </div>
           </div>
         </div>

@@ -93,8 +93,8 @@ export function getPool(): Pool | null {
     global._bksmartNeonPool = new Pool({
       connectionString,
       ssl: needsSsl ? { rejectUnauthorized: false } : undefined,
-      max: 10,
-      idleTimeoutMillis: 30000,
+      max: process.env.VERCEL ? 3 : 10,
+      idleTimeoutMillis: process.env.VERCEL ? 10000 : 30000,
       connectionTimeoutMillis: 15000,
     });
 
