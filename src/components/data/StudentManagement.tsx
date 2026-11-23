@@ -38,6 +38,8 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Partial<Student> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const classes = APIService.getClasses();
   const majors = APIService.getMajors();
@@ -91,53 +93,78 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
     paginatedStudents.length > 0 &&
     paginatedStudents.every(s => selectedIds.has(s.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleStudents(ids);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'MULTI_DELETE_STUDENTS',
-      'STUDENTS',
-      `Menghapus massal ${ids.length} data siswa`
-    );
-    setIsMultiDeleteModalOpen(false);
-    handleRefresh();
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteMultipleStudents(ids);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'MULTI_DELETE_STUDENTS',
+        'STUDENTS',
+        `Menghapus massal ${ids.length} data siswa`
+      );
+      setIsMultiDeleteModalOpen(false);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus data siswa dari database.');
+      setIsMultiDeleteModalOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveStudent = (e: React.FormEvent) => {
+  const handleSaveStudent = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingStudent?.name) return;
+    if (!editingStudent?.name || isSaving) return;
 
-    APIService.saveStudent(editingStudent);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      editingStudent.id ? 'UPDATE_STUDENT' : 'CREATE_STUDENT',
-      'STUDENTS',
-      `Menyimpan data siswa: ${editingStudent.name} (${editingStudent.className || 'X RPL 1'})`
-    );
-
-    setIsModalOpen(false);
-    setEditingStudent(null);
-    handleRefresh();
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      const saved = await APIService.saveStudent(editingStudent);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        editingStudent.id ? 'UPDATE_STUDENT' : 'CREATE_STUDENT',
+        'STUDENTS',
+        `Menyimpan data siswa: ${saved.name} (${saved.className})`
+      );
+      setIsModalOpen(false);
+      setEditingStudent(null);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menyimpan data siswa ke NeonDB.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteStudent = () => {
-    if (!deleteTarget) return;
-    APIService.deleteStudent(deleteTarget.id);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'DELETE_STUDENT',
-      'STUDENTS',
-      `Menghapus siswa ${deleteTarget.name} (${deleteTarget.nisn})`
-    );
-    setDeleteTarget(null);
-    handleRefresh();
+  const handleDeleteStudent = async () => {
+    if (!deleteTarget || isSaving) return;
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteStudent(deleteTarget.id);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'DELETE_STUDENT',
+        'STUDENTS',
+        `Menghapus siswa ${deleteTarget.name} (${deleteTarget.nisn})`
+      );
+      setDeleteTarget(null);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus siswa dari NeonDB.');
+      setDeleteTarget(null);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleExportCSV = () => {
@@ -202,11 +229,12 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
             <button
               type="button"
               onClick={() => {
+                setActionError(null);
                 setEditingStudent({
                   gender: 'L',
-                  className: restrictedToClass || 'XI RPL 1',
-                  majorName: 'Rekayasa Perangkat Lunak',
-                  academicYear: '2024/2025',
+                  className: restrictedToClass || classes[0]?.name || '',
+                  majorName: majors[0]?.name || '',
+                  academicYear: `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
                   status: 'active',
                 });
                 setIsModalOpen(true);
@@ -219,6 +247,12 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
           )}
         </div>
       </div>
+
+      {actionError && !isModalOpen && (
+        <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700">
+          {actionError}
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="bg-white p-3 rounded-xl border border-slate-200/90 shadow-2xs flex flex-col sm:flex-row items-center gap-3">
@@ -403,12 +437,19 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
       {/* Add / Edit Modal */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          if (!isSaving) setIsModalOpen(false);
+        }}
         title={editingStudent?.id ? 'Ubah Data Siswa' : 'Tambah Siswa Baru'}
         description="Lengkapi NISN dan nomor kontak untuk keperluan koordinasi konseling."
         maxWidth="lg"
       >
         <form onSubmit={handleSaveStudent} className="space-y-3.5 text-xs">
+          {actionError && (
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+              {actionError}
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-medium text-slate-700 mb-1">Nama Lengkap Siswa *</label>
@@ -460,35 +501,57 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-medium text-slate-700 mb-1">Kelas</label>
-              <select
-                value={editingStudent?.className || 'X RPL 1'}
-                onChange={(e) => {
-                  const selClass = classes.find(c => c.name === e.target.value);
-                  setEditingStudent({
-                    ...editingStudent,
-                    className: e.target.value,
-                    classId: selClass?.id || 'c-1',
-                    majorName: selClass?.majorName || editingStudent?.majorName,
-                  });
-                }}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-              >
-                {classes.map(c => (
-                  <option key={c.id} value={c.name}>{c.name}</option>
-                ))}
-              </select>
+              {classes.length > 0 ? (
+                <select
+                  value={editingStudent?.className || ''}
+                  onChange={(e) => {
+                    const selClass = classes.find(c => c.name === e.target.value);
+                    setEditingStudent({
+                      ...editingStudent,
+                      className: e.target.value,
+                      classId: selClass?.id || '',
+                      majorName: selClass?.majorName || editingStudent?.majorName,
+                    });
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="">-- Pilih Kelas --</option>
+                  {classes.map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={editingStudent?.className || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, className: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  placeholder="misal: X RPL 1"
+                />
+              )}
             </div>
             <div>
               <label className="block font-medium text-slate-700 mb-1">Jurusan</label>
-              <select
-                value={editingStudent?.majorName || 'Rekayasa Perangkat Lunak'}
-                onChange={(e) => setEditingStudent({ ...editingStudent, majorName: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-              >
-                {majors.map(m => (
-                  <option key={m.id} value={m.name}>{m.name}</option>
-                ))}
-              </select>
+              {majors.length > 0 ? (
+                <select
+                  value={editingStudent?.majorName || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, majorName: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="">-- Pilih Jurusan --</option>
+                  {majors.map(m => (
+                    <option key={m.id} value={m.name}>{m.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={editingStudent?.majorName || ''}
+                  onChange={(e) => setEditingStudent({ ...editingStudent, majorName: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  placeholder="misal: Rekayasa Perangkat Lunak"
+                />
+              )}
             </div>
           </div>
 
@@ -518,16 +581,18 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
+              disabled={isSaving}
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
+              disabled={isSaving}
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-60"
             >
-              Simpan Siswa
+              {isSaving ? 'Menyimpan...' : 'Simpan Siswa'}
             </button>
           </div>
         </form>

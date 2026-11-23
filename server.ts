@@ -67,6 +67,26 @@ async function startServer() {
     }
   });
 
+  // AUTHENTICATION
+  app.post('/api/auth/login', async (req, res) => {
+    try {
+      const username = typeof req.body?.username === 'string' ? req.body.username.trim() : '';
+      const password = typeof req.body?.password === 'string' ? req.body.password : '';
+      if (!username || !password) {
+        res.status(400).json({ error: 'Username dan kata sandi wajib diisi.' });
+        return;
+      }
+      const user = await BKSmartRepository.authenticateUser(username, password);
+      if (!user) {
+        res.status(401).json({ error: 'Username atau kata sandi tidak sesuai.' });
+        return;
+      }
+      res.json({ user });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal memproses login' });
+    }
+  });
+
   // USERS
   app.post('/api/users', async (req, res) => {
     try {

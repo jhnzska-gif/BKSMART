@@ -52,14 +52,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
         <StatCard
           title="Total Siswa Terdaftar"
           value={students.length}
-          subtitle="Tahun Ajaran 2024/2025"
+          subtitle="Tersinkronisasi dengan NeonDB"
           color="indigo"
           icon={<GraduationCap className="w-5 h-5" />}
         />
         <StatCard
           title="Guru & Tenaga BK"
           value={teachers.length}
-          subtitle="2 Guru BK, 3 Wali Kelas"
+          subtitle={`${teachers.filter(t => t.role === 'counselor').length} Guru BK, ${teachers.filter(t => t.role === 'teacher').length} Wali Kelas`}
           color="emerald"
           icon={<Users className="w-5 h-5" />}
         />
@@ -131,27 +131,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
           </div>
 
           <div className="divide-y divide-slate-100">
-            {auditLogs.map((log) => (
-              <div key={log.id} className="py-2.5 flex items-start justify-between gap-3 text-xs">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="font-semibold text-slate-900">{log.userName}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase font-mono">
-                      {log.userRole}
-                    </span>
-                    <span className="text-[11px] font-semibold text-slate-700 font-mono">[{log.action}]</span>
+            {auditLogs.length === 0 ? (
+              <p className="py-6 text-center text-xs text-slate-400">
+                Belum ada aktivitas audit yang tercatat.
+              </p>
+            ) : (
+              auditLogs.map((log) => (
+                <div key={log.id} className="py-2.5 flex items-start justify-between gap-3 text-xs">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-slate-900">{log.userName}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 uppercase font-mono">
+                        {log.userRole}
+                      </span>
+                      <span className="text-[11px] font-semibold text-slate-700 font-mono">[{log.action}]</span>
+                    </div>
+                    <p className="text-slate-600 mt-0.5">{log.description}</p>
                   </div>
-                  <p className="text-slate-600 mt-0.5">{log.description}</p>
-                </div>
-                <div className="text-right shrink-0">
-                  <div className="flex items-center gap-1 text-[11px] text-slate-400 font-mono">
-                    <Clock className="w-3 h-3" />
-                    <span>{new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                  <div className="text-right shrink-0">
+                    <div className="flex items-center gap-1 text-[11px] text-slate-400 font-mono">
+                      <Clock className="w-3 h-3" />
+                      <span>{new Date(log.timestamp).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <span className="text-[10px] text-slate-400">{log.ipAddress}</span>
                   </div>
-                  <span className="text-[10px] text-slate-400">{log.ipAddress}</span>
                 </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
 

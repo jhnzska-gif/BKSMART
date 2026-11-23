@@ -7,6 +7,7 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL DEFAULT '',
   name TEXT NOT NULL,
   email TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'student',

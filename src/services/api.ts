@@ -50,6 +50,13 @@ let activeRole: UserRole = 'student';
 const makeId = (prefix: string) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
 
+const defaultAcademicYear = () => {
+  const active = store.academicYears.find((y) => y.isActive);
+  if (active) return active.year;
+  const year = new Date().getFullYear();
+  return `${year}/${year + 1}`;
+};
+
 export class APIService {
   static setActiveRole(role: UserRole): void {
     activeRole = role;
@@ -94,35 +101,48 @@ export class APIService {
     }
   }
 
-  private static persist(url: string, method: 'POST' | 'DELETE', body?: unknown): void {
-    fetch(url, {
+  private static async persistAsync<T = unknown>(
+    url: string,
+    method: 'POST' | 'DELETE',
+    body?: unknown
+  ): Promise<T> {
+    const res = await fetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',
         'x-user-role': activeRole,
       },
       body: body !== undefined ? JSON.stringify(body) : undefined,
-      keepalive: true,
-    })
-      .then((res) => {
-        if (!res.ok) {
-          console.error(`API request failed [${method} ${url}]: HTTP ${res.status}`);
-        }
-      })
-      .catch((err) => {
-        console.error(`API request error [${method} ${url}]:`, err);
-      });
+      cache: 'no-store',
+    });
+
+    const text = await res.text();
+    let parsed: Record<string, unknown> | null = null;
+    try {
+      parsed = text ? (JSON.parse(text) as Record<string, unknown>) : null;
+    } catch {
+      parsed = null;
+    }
+
+    if (!res.ok) {
+      const message =
+        (parsed && typeof parsed.error === 'string' && parsed.error) ||
+        `Permintaan server gagal (${method} ${url}: HTTP ${res.status})`;
+      throw new Error(message);
+    }
+
+    return parsed as T;
   }
 
-  // Audit logger
-  static logAudit(
+  // Audit logger (non-blocking helper that still awaits backend insert cleanly)
+  static async logAudit(
     userId: string,
     userName: string,
     userRole: UserRole,
     action: string,
     module: AuditLog['module'],
     description: string
-  ) {
+  ): Promise<void> {
     const newLog: AuditLog = {
       id: makeId('log'),
       timestamp: new Date().toISOString(),
@@ -135,17 +155,49 @@ export class APIService {
       ipAddress: '127.0.0.1 (Web Portal)',
     };
     store.auditLogs = [newLog, ...store.auditLogs].slice(0, 100);
-    this.persist('/api/audit-logs', 'POST', newLog);
+    try {
+      await this.persistAsync('/api/audit-logs', 'POST', newLog);
+    } catch (error) {
+      console.error('Failed to persist audit log:', error);
+    }
   }
 
   static getAuditLogs(): AuditLog[] {
     return store.auditLogs;
   }
 
-  static deleteMultipleAuditLogs(ids: string[]): void {
+  static async deleteMultipleAuditLogs(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/audit-logs/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.auditLogs = store.auditLogs.filter((l) => !idSet.has(l.id));
-    this.persist('/api/audit-logs/batch-delete', 'POST', { ids });
+  }
+
+  // AUTHENTICATION
+  static async login(
+    username: string,
+    password: string
+  ): Promise<{ ok: boolean; user?: User; error?: string }> {
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const json = await response.json();
+      if (!response.ok || !json?.user) {
+        return {
+          ok: false,
+          error: json?.error || 'Username atau kata sandi tidak sesuai.',
+        };
+      }
+      return { ok: true, user: json.user as User };
+    } catch {
+      return {
+        ok: false,
+        error: 'Gagal menghubungi server autentikasi.',
+      };
+    }
   }
 
   // USERS
@@ -153,43 +205,52 @@ export class APIService {
     return store.users;
   }
 
-  static saveUser(user: Partial<User> & { id?: string }): User {
-    if (user.id) {
-      const idx = store.users.findIndex((u) => u.id === user.id);
+  static async saveUser(user: Partial<User> & { id?: string }): Promise<User> {
+    const { password, ...rest } = user;
+    if (rest.id) {
+      const idx = store.users.findIndex((u) => u.id === rest.id);
       if (idx !== -1) {
-        const updated = { ...store.users[idx], ...user } as User;
-        store.users[idx] = updated;
-        this.persist('/api/users', 'POST', updated);
-        return updated;
+        const cleanUpdated = { ...store.users[idx], ...rest } as User;
+        const saved = await this.persistAsync<User>('/api/users', 'POST', {
+          ...cleanUpdated,
+          ...(password ? { password } : {}),
+        });
+        store.users[idx] = saved || cleanUpdated;
+        return store.users[idx];
       }
     }
     const newUser: User = {
       id: makeId('u'),
-      username: user.username || 'user' + Math.floor(Math.random() * 1000),
-      name: user.name || 'Pengguna Baru',
-      email: user.email || '',
-      role: user.role || 'student',
-      active: user.active ?? true,
-      nipOrNisn: user.nipOrNisn || '',
-      phone: user.phone || '',
-      assignedClass: user.assignedClass,
-      gradeLevel: user.gradeLevel,
+      username: rest.username || 'user' + Math.floor(Math.random() * 1000),
+      name: rest.name || 'Pengguna Baru',
+      email: rest.email || '',
+      role: rest.role || 'student',
+      active: rest.active ?? true,
+      nipOrNisn: rest.nipOrNisn || '',
+      phone: rest.phone || '',
+      assignedClass: rest.assignedClass,
+      gradeLevel: rest.gradeLevel,
       createdAt: new Date().toISOString(),
     };
-    store.users = [...store.users, newUser];
-    this.persist('/api/users', 'POST', newUser);
-    return newUser;
+    const saved = await this.persistAsync<User>('/api/users', 'POST', {
+      ...newUser,
+      ...(password ? { password } : {}),
+    });
+    const finalUser = saved || newUser;
+    store.users = [...store.users, finalUser];
+    return finalUser;
   }
 
-  static deleteUser(id: string): void {
+  static async deleteUser(id: string): Promise<void> {
+    await this.persistAsync(`/api/users/${encodeURIComponent(id)}`, 'DELETE');
     store.users = store.users.filter((u) => u.id !== id);
-    this.persist(`/api/users/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleUsers(ids: string[]): void {
+  static async deleteMultipleUsers(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/users/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.users = store.users.filter((u) => !idSet.has(u.id));
-    this.persist('/api/users/batch-delete', 'POST', { ids });
   }
 
   // STUDENTS
@@ -197,14 +258,14 @@ export class APIService {
     return store.students;
   }
 
-  static saveStudent(student: Partial<Student> & { id?: string }): Student {
+  static async saveStudent(student: Partial<Student> & { id?: string }): Promise<Student> {
     if (student.id) {
       const idx = store.students.findIndex((s) => s.id === student.id);
       if (idx !== -1) {
         const updated = { ...store.students[idx], ...student } as Student;
-        store.students[idx] = updated;
-        this.persist('/api/students', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<Student>('/api/students', 'POST', updated);
+        store.students[idx] = saved || updated;
+        return store.students[idx];
       }
     }
     const newStudent: Student = {
@@ -213,11 +274,11 @@ export class APIService {
       nis: student.nis || '24' + Math.floor(10000 + Math.random() * 90000),
       name: student.name || 'Siswa Baru',
       gender: student.gender || 'L',
-      classId: student.classId || 'c-1',
-      className: student.className || 'X RPL 1',
-      majorId: student.majorId || 'm-1',
-      majorName: student.majorName || 'Rekayasa Perangkat Lunak',
-      academicYear: student.academicYear || '2024/2025',
+      classId: student.classId || '',
+      className: student.className?.trim() || '-',
+      majorId: student.majorId || '',
+      majorName: student.majorName?.trim() || '-',
+      academicYear: student.academicYear || defaultAcademicYear(),
       parentName: student.parentName || '-',
       parentPhone: student.parentPhone || '-',
       studentPhone: student.studentPhone || '-',
@@ -226,20 +287,22 @@ export class APIService {
       counselingCount: student.counselingCount ?? 0,
       openCasesCount: student.openCasesCount ?? 0,
     };
-    store.students = [newStudent, ...store.students];
-    this.persist('/api/students', 'POST', newStudent);
-    return newStudent;
+    const saved = await this.persistAsync<Student>('/api/students', 'POST', newStudent);
+    const finalStudent = saved || newStudent;
+    store.students = [finalStudent, ...store.students];
+    return finalStudent;
   }
 
-  static deleteStudent(id: string): void {
+  static async deleteStudent(id: string): Promise<void> {
+    await this.persistAsync(`/api/students/${encodeURIComponent(id)}`, 'DELETE');
     store.students = store.students.filter((s) => s.id !== id);
-    this.persist(`/api/students/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleStudents(ids: string[]): void {
+  static async deleteMultipleStudents(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/students/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.students = store.students.filter((s) => !idSet.has(s.id));
-    this.persist('/api/students/batch-delete', 'POST', { ids });
   }
 
   // TEACHERS
@@ -247,14 +310,14 @@ export class APIService {
     return store.teachers;
   }
 
-  static saveTeacher(teacher: Partial<Teacher> & { id?: string }): Teacher {
+  static async saveTeacher(teacher: Partial<Teacher> & { id?: string }): Promise<Teacher> {
     if (teacher.id) {
       const idx = store.teachers.findIndex((t) => t.id === teacher.id);
       if (idx !== -1) {
         const updated = { ...store.teachers[idx], ...teacher } as Teacher;
-        store.teachers[idx] = updated;
-        this.persist('/api/teachers', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<Teacher>('/api/teachers', 'POST', updated);
+        store.teachers[idx] = saved || updated;
+        return store.teachers[idx];
       }
     }
     const newTeacher: Teacher = {
@@ -268,20 +331,22 @@ export class APIService {
       specialization: teacher.specialization,
       assignedClass: teacher.assignedClass,
     };
-    store.teachers = [...store.teachers, newTeacher];
-    this.persist('/api/teachers', 'POST', newTeacher);
-    return newTeacher;
+    const saved = await this.persistAsync<Teacher>('/api/teachers', 'POST', newTeacher);
+    const finalTeacher = saved || newTeacher;
+    store.teachers = [...store.teachers, finalTeacher];
+    return finalTeacher;
   }
 
-  static deleteTeacher(id: string): void {
+  static async deleteTeacher(id: string): Promise<void> {
+    await this.persistAsync(`/api/teachers/${encodeURIComponent(id)}`, 'DELETE');
     store.teachers = store.teachers.filter((t) => t.id !== id);
-    this.persist(`/api/teachers/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleTeachers(ids: string[]): void {
+  static async deleteMultipleTeachers(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/teachers/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.teachers = store.teachers.filter((t) => !idSet.has(t.id));
-    this.persist('/api/teachers/batch-delete', 'POST', { ids });
   }
 
   // CLASSES & MAJORS & ACADEMIC YEARS
@@ -289,41 +354,43 @@ export class APIService {
     return store.classes;
   }
 
-  static saveClass(item: Partial<SchoolClass> & { id?: string }): SchoolClass {
+  static async saveClass(item: Partial<SchoolClass> & { id?: string }): Promise<SchoolClass> {
     if (item.id) {
       const idx = store.classes.findIndex((c) => c.id === item.id);
       if (idx !== -1) {
         const updated = { ...store.classes[idx], ...item } as SchoolClass;
-        store.classes[idx] = updated;
-        this.persist('/api/classes', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<SchoolClass>('/api/classes', 'POST', updated);
+        store.classes[idx] = saved || updated;
+        return store.classes[idx];
       }
     }
     const newClass: SchoolClass = {
       id: makeId('c'),
       name: item.name || 'Kelas Baru',
       grade: item.grade || '10',
-      majorId: item.majorId || 'm-1',
-      majorName: item.majorName || 'Rekayasa Perangkat Lunak',
+      majorId: item.majorId || '',
+      majorName: item.majorName?.trim() || '-',
       studentCount: item.studentCount || 0,
-      academicYear: item.academicYear || '2024/2025',
+      academicYear: item.academicYear || defaultAcademicYear(),
       homeroomTeacherId: item.homeroomTeacherId,
       homeroomTeacherName: item.homeroomTeacherName,
     };
-    store.classes = [...store.classes, newClass];
-    this.persist('/api/classes', 'POST', newClass);
-    return newClass;
+    const saved = await this.persistAsync<SchoolClass>('/api/classes', 'POST', newClass);
+    const finalClass = saved || newClass;
+    store.classes = [...store.classes, finalClass];
+    return finalClass;
   }
 
-  static deleteClass(id: string): void {
+  static async deleteClass(id: string): Promise<void> {
+    await this.persistAsync(`/api/classes/${encodeURIComponent(id)}`, 'DELETE');
     store.classes = store.classes.filter((c) => c.id !== id);
-    this.persist(`/api/classes/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleClasses(ids: string[]): void {
+  static async deleteMultipleClasses(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/classes/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.classes = store.classes.filter((c) => !idSet.has(c.id));
-    this.persist('/api/classes/batch-delete', 'POST', { ids });
   }
 
   static getMajors(): Major[] {
@@ -339,25 +406,31 @@ export class APIService {
     return store.counselingSessions;
   }
 
-  static saveCounselingSession(session: Partial<CounselingSession> & { id?: string }): CounselingSession {
+  static async saveCounselingSession(
+    session: Partial<CounselingSession> & { id?: string }
+  ): Promise<CounselingSession> {
     if (session.id) {
       const idx = store.counselingSessions.findIndex((s) => s.id === session.id);
       if (idx !== -1) {
         const updated = { ...store.counselingSessions[idx], ...session } as CounselingSession;
-        store.counselingSessions[idx] = updated;
-        this.persist('/api/counseling-sessions', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<CounselingSession>(
+          '/api/counseling-sessions',
+          'POST',
+          updated
+        );
+        store.counselingSessions[idx] = saved || updated;
+        return store.counselingSessions[idx];
       }
     }
     const count = store.counselingSessions.length + 1;
     const newSession: CounselingSession = {
       id: makeId('cs'),
-      ticketNumber: `BK-2025-${String(count).padStart(3, '0')}`,
-      studentId: session.studentId || 's-1',
+      ticketNumber: `BK-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`,
+      studentId: session.studentId || '',
       studentName: session.studentName || 'Siswa',
-      studentClass: session.studentClass || 'XI RPL 1',
-      counselorId: session.counselorId || 'u-2',
-      counselorName: session.counselorName || 'Siti Rahmawati, S.Pd., Kons.',
+      studentClass: session.studentClass || '-',
+      counselorId: session.counselorId || '',
+      counselorName: session.counselorName || 'Guru BK',
       type: session.type || 'individual',
       domain: session.domain || 'pribadi',
       sessionDate: session.sessionDate || new Date().toISOString().split('T')[0],
@@ -371,20 +444,26 @@ export class APIService {
       followUpDate: session.followUpDate,
       createdAt: new Date().toISOString(),
     };
-    store.counselingSessions = [newSession, ...store.counselingSessions];
-    this.persist('/api/counseling-sessions', 'POST', newSession);
-    return newSession;
+    const saved = await this.persistAsync<CounselingSession>(
+      '/api/counseling-sessions',
+      'POST',
+      newSession
+    );
+    const finalSession = saved || newSession;
+    store.counselingSessions = [finalSession, ...store.counselingSessions];
+    return finalSession;
   }
 
-  static deleteCounselingSession(id: string): void {
+  static async deleteCounselingSession(id: string): Promise<void> {
+    await this.persistAsync(`/api/counseling-sessions/${encodeURIComponent(id)}`, 'DELETE');
     store.counselingSessions = store.counselingSessions.filter((s) => s.id !== id);
-    this.persist(`/api/counseling-sessions/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleCounselingSessions(ids: string[]): void {
+  static async deleteMultipleCounselingSessions(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/counseling-sessions/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.counselingSessions = store.counselingSessions.filter((s) => !idSet.has(s.id));
-    this.persist('/api/counseling-sessions/batch-delete', 'POST', { ids });
   }
 
   // REFERRALS
@@ -392,7 +471,7 @@ export class APIService {
     return store.referrals;
   }
 
-  static saveReferral(ref: Partial<Referral> & { id?: string }): Referral {
+  static async saveReferral(ref: Partial<Referral> & { id?: string }): Promise<Referral> {
     if (ref.id) {
       const idx = store.referrals.findIndex((r) => r.id === ref.id);
       if (idx !== -1) {
@@ -401,22 +480,22 @@ export class APIService {
           ...ref,
           updatedAt: new Date().toISOString(),
         } as Referral;
-        store.referrals[idx] = updated;
-        this.persist('/api/referrals', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<Referral>('/api/referrals', 'POST', updated);
+        store.referrals[idx] = saved || updated;
+        return store.referrals[idx];
       }
     }
     const count = store.referrals.length + 1;
     const newRef: Referral = {
       id: makeId('ref'),
-      referralNumber: `RUJ-2025-${String(count).padStart(2, '0')}`,
+      referralNumber: `RUJ-${new Date().getFullYear()}-${String(count).padStart(2, '0')}`,
       studentId: ref.studentId || '',
       studentName: ref.studentName || '',
       studentClass: ref.studentClass || '',
-      referredByTeacherId: ref.referredByTeacherId || 'u-3',
+      referredByTeacherId: ref.referredByTeacherId || '',
       referredByTeacherName: ref.referredByTeacherName || 'Wali Kelas',
-      counselorId: ref.counselorId || 'u-2',
-      counselorName: ref.counselorName || 'Siti Rahmawati, S.Pd., Kons.',
+      counselorId: ref.counselorId,
+      counselorName: ref.counselorName,
       reason: ref.reason || '',
       indicators: ref.indicators || [],
       urgency: ref.urgency || 'medium',
@@ -425,20 +504,22 @@ export class APIService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    store.referrals = [newRef, ...store.referrals];
-    this.persist('/api/referrals', 'POST', newRef);
-    return newRef;
+    const saved = await this.persistAsync<Referral>('/api/referrals', 'POST', newRef);
+    const finalRef = saved || newRef;
+    store.referrals = [finalRef, ...store.referrals];
+    return finalRef;
   }
 
-  static deleteReferral(id: string): void {
+  static async deleteReferral(id: string): Promise<void> {
+    await this.persistAsync(`/api/referrals/${encodeURIComponent(id)}`, 'DELETE');
     store.referrals = store.referrals.filter((r) => r.id !== id);
-    this.persist(`/api/referrals/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleReferrals(ids: string[]): void {
+  static async deleteMultipleReferrals(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/referrals/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.referrals = store.referrals.filter((r) => !idSet.has(r.id));
-    this.persist('/api/referrals/batch-delete', 'POST', { ids });
   }
 
   // STUDENT CASES
@@ -446,7 +527,7 @@ export class APIService {
     return store.cases;
   }
 
-  static saveCase(caseItem: Partial<StudentCase> & { id?: string }): StudentCase {
+  static async saveCase(caseItem: Partial<StudentCase> & { id?: string }): Promise<StudentCase> {
     if (caseItem.id) {
       const idx = store.cases.findIndex((c) => c.id === caseItem.id);
       if (idx !== -1) {
@@ -455,15 +536,15 @@ export class APIService {
           ...caseItem,
           updatedAt: new Date().toISOString(),
         } as StudentCase;
-        store.cases[idx] = updated;
-        this.persist('/api/cases', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<StudentCase>('/api/cases', 'POST', updated);
+        store.cases[idx] = saved || updated;
+        return store.cases[idx];
       }
     }
     const count = store.cases.length + 1;
     const newCase: StudentCase = {
       id: makeId('case'),
-      caseNumber: `KASUS-2025-${String(count).padStart(3, '0')}`,
+      caseNumber: `KASUS-${new Date().getFullYear()}-${String(count).padStart(3, '0')}`,
       title: caseItem.title || 'Kasus Bimbingan Siswa',
       studentId: caseItem.studentId || '',
       studentName: caseItem.studentName || '',
@@ -471,8 +552,8 @@ export class APIService {
       category: caseItem.category || 'kedisiplinan',
       priority: caseItem.priority || 'sedang',
       status: caseItem.status || 'investigasi',
-      assignedCounselorId: caseItem.assignedCounselorId || 'u-2',
-      assignedCounselorName: caseItem.assignedCounselorName || 'Siti Rahmawati, S.Pd., Kons.',
+      assignedCounselorId: caseItem.assignedCounselorId || '',
+      assignedCounselorName: caseItem.assignedCounselorName || 'Guru BK',
       incidentDate: caseItem.incidentDate || new Date().toISOString().split('T')[0],
       chronologySummary: caseItem.chronologySummary || '',
       confidentialDetails: caseItem.confidentialDetails || '',
@@ -481,20 +562,22 @@ export class APIService {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    store.cases = [newCase, ...store.cases];
-    this.persist('/api/cases', 'POST', newCase);
-    return newCase;
+    const saved = await this.persistAsync<StudentCase>('/api/cases', 'POST', newCase);
+    const finalCase = saved || newCase;
+    store.cases = [finalCase, ...store.cases];
+    return finalCase;
   }
 
-  static deleteCase(id: string): void {
+  static async deleteCase(id: string): Promise<void> {
+    await this.persistAsync(`/api/cases/${encodeURIComponent(id)}`, 'DELETE');
     store.cases = store.cases.filter((c) => c.id !== id);
-    this.persist(`/api/cases/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleCases(ids: string[]): void {
+  static async deleteMultipleCases(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/cases/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.cases = store.cases.filter((c) => !idSet.has(c.id));
-    this.persist('/api/cases/batch-delete', 'POST', { ids });
   }
 
   // PROGRAMS
@@ -502,14 +585,14 @@ export class APIService {
     return store.programs;
   }
 
-  static saveProgram(program: Partial<BKProgram> & { id?: string }): BKProgram {
+  static async saveProgram(program: Partial<BKProgram> & { id?: string }): Promise<BKProgram> {
     if (program.id) {
       const idx = store.programs.findIndex((p) => p.id === program.id);
       if (idx !== -1) {
         const updated = { ...store.programs[idx], ...program } as BKProgram;
-        store.programs[idx] = updated;
-        this.persist('/api/programs', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<BKProgram>('/api/programs', 'POST', updated);
+        store.programs[idx] = saved || updated;
+        return store.programs[idx];
       }
     }
     const newProg: BKProgram = {
@@ -518,26 +601,28 @@ export class APIService {
       domain: program.domain || 'pribadi',
       targetGrade: program.targetGrade || 'Semua',
       semester: program.semester || 'Genap',
-      academicYear: program.academicYear || '2024/2025',
+      academicYear: program.academicYear || defaultAcademicYear(),
       objectives: program.objectives || '',
-      scheduledMonth: program.scheduledMonth || 'Maret 2025',
+      scheduledMonth: program.scheduledMonth || 'Maret',
       status: program.status || 'planned',
       completionPercentage: program.completionPercentage || 0,
     };
-    store.programs = [...store.programs, newProg];
-    this.persist('/api/programs', 'POST', newProg);
-    return newProg;
+    const saved = await this.persistAsync<BKProgram>('/api/programs', 'POST', newProg);
+    const finalProg = saved || newProg;
+    store.programs = [...store.programs, finalProg];
+    return finalProg;
   }
 
-  static deleteProgram(id: string): void {
+  static async deleteProgram(id: string): Promise<void> {
+    await this.persistAsync(`/api/programs/${encodeURIComponent(id)}`, 'DELETE');
     store.programs = store.programs.filter((p) => p.id !== id);
-    this.persist(`/api/programs/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultiplePrograms(ids: string[]): void {
+  static async deleteMultiplePrograms(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/programs/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.programs = store.programs.filter((p) => !idSet.has(p.id));
-    this.persist('/api/programs/batch-delete', 'POST', { ids });
   }
 
   // ASSESSMENTS
@@ -549,13 +634,13 @@ export class APIService {
     return store.submissions;
   }
 
-  static submitAssessment(
+  static async submitAssessment(
     assessmentId: string,
     studentId: string,
     studentName: string,
     studentClass: string,
     answers: Record<string, string>
-  ): AssessmentSubmission {
+  ): Promise<AssessmentSubmission> {
     const asm = store.assessments.find((a) => a.id === assessmentId);
 
     // Calculate score / dominant type (no clinical diagnosis - purely guidance typology)
@@ -600,13 +685,18 @@ export class APIService {
       },
     };
 
-    store.submissions = [newSub, ...store.submissions];
+    const saved = await this.persistAsync<AssessmentSubmission>(
+      '/api/assessments/submit',
+      'POST',
+      newSub
+    );
+    const finalSub = saved || newSub;
+    store.submissions = [finalSub, ...store.submissions];
     if (asm) {
       asm.submissionCount += 1;
     }
 
-    this.persist('/api/assessments/submit', 'POST', newSub);
-    return newSub;
+    return finalSub;
   }
 
   // MATERIALS
@@ -614,14 +704,14 @@ export class APIService {
     return store.materials;
   }
 
-  static saveMaterial(mat: Partial<BKMaterial> & { id?: string }): BKMaterial {
+  static async saveMaterial(mat: Partial<BKMaterial> & { id?: string }): Promise<BKMaterial> {
     if (mat.id) {
       const idx = store.materials.findIndex((m) => m.id === mat.id);
       if (idx !== -1) {
         const updated = { ...store.materials[idx], ...mat } as BKMaterial;
-        store.materials[idx] = updated;
-        this.persist('/api/materials', 'POST', updated);
-        return updated;
+        const saved = await this.persistAsync<BKMaterial>('/api/materials', 'POST', updated);
+        store.materials[idx] = saved || updated;
+        return store.materials[idx];
       }
     }
     const newMat: BKMaterial = {
@@ -637,20 +727,22 @@ export class APIService {
       createdAt: new Date().toISOString(),
       readCount: 0,
     };
-    store.materials = [newMat, ...store.materials];
-    this.persist('/api/materials', 'POST', newMat);
-    return newMat;
+    const saved = await this.persistAsync<BKMaterial>('/api/materials', 'POST', newMat);
+    const finalMat = saved || newMat;
+    store.materials = [finalMat, ...store.materials];
+    return finalMat;
   }
 
-  static deleteMaterial(id: string): void {
+  static async deleteMaterial(id: string): Promise<void> {
+    await this.persistAsync(`/api/materials/${encodeURIComponent(id)}`, 'DELETE');
     store.materials = store.materials.filter((m) => m.id !== id);
-    this.persist(`/api/materials/${encodeURIComponent(id)}`, 'DELETE');
   }
 
-  static deleteMultipleMaterials(ids: string[]): void {
+  static async deleteMultipleMaterials(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    await this.persistAsync('/api/materials/batch-delete', 'POST', { ids });
     const idSet = new Set(ids);
     store.materials = store.materials.filter((m) => !idSet.has(m.id));
-    this.persist('/api/materials/batch-delete', 'POST', { ids });
   }
 
   // IMPORT / EXPORT HELPERS
@@ -701,19 +793,21 @@ export class APIService {
     const sample = [
       '0081234567',
       '2425001',
-      'Budi Santoso',
+      'Nama Siswa',
       'L',
       'X RPL 1',
       'Rekayasa Perangkat Lunak',
-      '2024/2025',
-      'Joko Widodo',
+      defaultAcademicYear(),
+      'Nama Wali',
       '0812-3456-7890',
       '0813-9988-7766',
     ];
     return [headers.join(','), sample.join(',')].join('\n');
   }
 
-  static importStudentsFromCSV(csvText: string): { importedCount: number; errors: string[] } {
+  static async importStudentsFromCSV(
+    csvText: string
+  ): Promise<{ importedCount: number; errors: string[] }> {
     const lines = csvText.trim().split(/\r?\n/);
     if (lines.length < 2) {
       return { importedCount: 0, errors: ['File CSV kosong atau tidak memiliki baris data.'] };
@@ -736,15 +830,15 @@ export class APIService {
         nis: nis || '24' + Math.floor(10000 + Math.random() * 90000),
         name: name || 'Siswa Import ' + i,
         gender: gender?.toUpperCase() === 'P' ? 'P' : 'L',
-        classId: 'c-1',
-        className: className || 'X RPL 1',
-        majorId: 'm-1',
-        majorName: majorName || 'Rekayasa Perangkat Lunak',
-        academicYear: academicYear || '2024/2025',
+        classId: '',
+        className: className || '-',
+        majorId: '',
+        majorName: majorName || '-',
+        academicYear: academicYear || defaultAcademicYear(),
         parentName: parentName || '-',
         parentPhone: parentPhone || '-',
         studentPhone: studentPhone || '-',
-        address: 'Alamat Siswa',
+        address: '-',
         status: 'active',
         counselingCount: 0,
         openCasesCount: 0,
@@ -753,8 +847,8 @@ export class APIService {
     }
 
     if (importedStudents.length > 0) {
+      await this.persistAsync('/api/students/import', 'POST', { students: importedStudents });
       store.students = [...importedStudents, ...store.students];
-      this.persist('/api/students/import', 'POST', { students: importedStudents });
     }
 
     return { importedCount: importedStudents.length, errors };

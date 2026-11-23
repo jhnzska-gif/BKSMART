@@ -30,19 +30,19 @@ export const AssessmentManagement: React.FC = () => {
     setSubmissionResult(null);
   };
 
-  const handleSubmitQuiz = (e: React.FormEvent) => {
+  const handleSubmitQuiz = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeTakingAsm || !currentUser) return;
 
-    const sub = APIService.submitAssessment(
+    const sub = await APIService.submitAssessment(
       activeTakingAsm.id,
       currentUser.id,
       currentUser.name,
-      currentUser.assignedClass || 'XI RPL 1',
+      currentUser.assignedClass || '-',
       answers
     );
 
-    APIService.logAudit(
+    await APIService.logAudit(
       currentUser.id,
       currentUser.name,
       role,

@@ -63,10 +63,10 @@ export const TeacherManagement: React.FC = () => {
     paginatedTeachers.length > 0 &&
     paginatedTeachers.every(t => selectedIds.has(t.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleTeachers(ids);
-    APIService.logAudit(
+    await APIService.deleteMultipleTeachers(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'Admin',
       role,
@@ -78,12 +78,12 @@ export const TeacherManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingTeacher?.name) return;
 
-    APIService.saveTeacher(editingTeacher);
-    APIService.logAudit(
+    await APIService.saveTeacher(editingTeacher);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'Admin',
       role,
@@ -97,10 +97,10 @@ export const TeacherManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    APIService.deleteTeacher(deleteTarget.id);
-    APIService.logAudit(
+    await APIService.deleteTeacher(deleteTarget.id);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'Admin',
       role,

@@ -122,10 +122,10 @@ export const ReferralManagement: React.FC = () => {
     }
   };
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleReferrals(ids);
-    APIService.logAudit(
+    await APIService.deleteMultipleReferrals(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -137,9 +137,9 @@ export const ReferralManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleDeleteSingle = () => {
+  const handleDeleteSingle = async () => {
     if (!deleteSingleTarget) return;
-    APIService.deleteReferral(deleteSingleTarget.id);
+    await APIService.deleteReferral(deleteSingleTarget.id);
     if (detailRef?.id === deleteSingleTarget.id) {
       setDetailRef(null);
     }
@@ -147,20 +147,20 @@ export const ReferralManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleCreateReferral = (e: React.FormEvent) => {
+  const handleCreateReferral = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newReferral.studentId || !newReferral.reason) return;
 
     const student = students.find((s) => s.id === newReferral.studentId);
-    const created = APIService.saveReferral({
+    const created = await APIService.saveReferral({
       ...newReferral,
       studentName: student?.name || '',
       studentClass: student?.className || '',
-      referredByTeacherId: currentUser?.id || 'u-3',
-      referredByTeacherName: `${currentUser?.name || 'Wali Kelas'} (Wali Kelas ${student?.className})`,
+      referredByTeacherId: currentUser?.id || '',
+      referredByTeacherName: `${currentUser?.name || 'Wali Kelas'} (Wali Kelas ${student?.className || '-'})`,
     });
 
-    APIService.logAudit(
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'Guru',
       role,
@@ -181,11 +181,11 @@ export const ReferralManagement: React.FC = () => {
     setIsFeedbackModalOpen(true);
   };
 
-  const handleSaveFeedback = (e: React.FormEvent) => {
+  const handleSaveFeedback = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRef) return;
 
-    APIService.saveReferral({
+    await APIService.saveReferral({
       id: selectedRef.id,
       status: newStatus,
       counselorFeedback: feedbackText,
@@ -194,12 +194,12 @@ export const ReferralManagement: React.FC = () => {
     });
 
     if (newStatus === 'scheduled') {
-      APIService.saveCounselingSession({
+      await APIService.saveCounselingSession({
         studentId: selectedRef.studentId,
         studentName: selectedRef.studentName,
         studentClass: selectedRef.studentClass,
-        counselorId: currentUser?.id || 'u-2',
-        counselorName: currentUser?.name || 'Siti Rahmawati, S.Pd., Kons.',
+        counselorId: currentUser?.id || '',
+        counselorName: currentUser?.name || 'Guru BK',
         domain: 'belajar',
         type: 'individual',
         sessionDate: new Date(Date.now() + 86400000 * 2).toISOString().split('T')[0],
@@ -210,7 +210,7 @@ export const ReferralManagement: React.FC = () => {
       });
     }
 
-    APIService.logAudit(
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'Guru BK',
       role,

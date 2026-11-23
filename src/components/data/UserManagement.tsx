@@ -7,7 +7,7 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
 import { BatchActionBar } from '../common/BatchActionBar';
-import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
   const { currentUser, role } = useAuth();
@@ -23,7 +23,10 @@ export const UserManagement: React.FC = () => {
   // Modal form state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<Partial<User> | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const handleRefresh = () => {
     setUsers(APIService.getUsers());
@@ -70,53 +73,80 @@ export const UserManagement: React.FC = () => {
     paginatedUsers.length > 0 &&
     paginatedUsers.filter(u => u.id !== currentUser?.id).every(u => selectedIds.has(u.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleUsers(ids);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'MULTI_DELETE_USERS',
-      'AUTH',
-      `Menghapus ${ids.length} akun pengguna sekaligus`
-    );
-    setIsMultiDeleteModalOpen(false);
-    handleRefresh();
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteMultipleUsers(ids);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'MULTI_DELETE_USERS',
+        'AUTH',
+        `Menghapus ${ids.length} akun pengguna sekaligus`
+      );
+      setIsMultiDeleteModalOpen(false);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus pengguna dari database.');
+      setIsMultiDeleteModalOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleSaveUser = (e: React.FormEvent) => {
+  const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingUser?.name || !editingUser?.username) return;
+    if (!editingUser?.name || !editingUser?.username || isSaving) return;
 
-    APIService.saveUser(editingUser);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      editingUser.id ? 'UPDATE_USER' : 'CREATE_USER',
-      'AUTH',
-      `Menyimpan akun pengguna: ${editingUser.name} (${editingUser.role})`
-    );
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.saveUser(editingUser);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        editingUser.id ? 'UPDATE_USER' : 'CREATE_USER',
+        'AUTH',
+        `Menyimpan akun pengguna: ${editingUser.name} (${editingUser.role})`
+      );
 
-    setIsModalOpen(false);
-    setEditingUser(null);
-    handleRefresh();
+      setIsModalOpen(false);
+      setEditingUser(null);
+      setShowPassword(false);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menyimpan pengguna ke database.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteUser = () => {
-    if (!deleteTarget) return;
-    APIService.deleteUser(deleteTarget.id);
-    APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'DELETE_USER',
-      'AUTH',
-      `Menghapus pengguna: ${deleteTarget.name} (${deleteTarget.username})`
-    );
-    setDeleteTarget(null);
-    handleRefresh();
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || isSaving) return;
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteUser(deleteTarget.id);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'DELETE_USER',
+        'AUTH',
+        `Menghapus pengguna: ${deleteTarget.name} (${deleteTarget.username})`
+      );
+      setDeleteTarget(null);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus pengguna dari database.');
+      setDeleteTarget(null);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const roleBadges: Record<UserRole, { variant: 'indigo' | 'emerald' | 'amber' | 'blue' | 'crimson'; label: string }> = {
@@ -292,11 +322,18 @@ export const UserManagement: React.FC = () => {
       {/* Modal Add/Edit */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => {
+          if (!isSaving) setIsModalOpen(false);
+        }}
         title={editingUser?.id ? 'Ubah Data Pengguna' : 'Tambah Pengguna Baru'}
         maxWidth="md"
       >
         <form onSubmit={handleSaveUser} className="space-y-3 text-xs">
+          {actionError && (
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+              {actionError}
+            </div>
+          )}
           <div>
             <label className="block font-medium text-slate-700 mb-1">Nama Lengkap & Gelar *</label>
             <input
@@ -338,6 +375,34 @@ export const UserManagement: React.FC = () => {
           </div>
 
           <div>
+            <label className="block font-medium text-slate-700 mb-1">
+              {editingUser?.id ? 'Kata Sandi Baru (Opsional)' : 'Kata Sandi *'}
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                required={!editingUser?.id}
+                minLength={4}
+                value={editingUser?.password || ''}
+                onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })}
+                className="w-full pl-3 pr-9 py-1.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
+                placeholder={
+                  editingUser?.id
+                    ? 'Kosongkan jika tidak ingin mengubah kata sandi'
+                    : 'Minimal 4 karakter'
+                }
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((p) => !p)}
+                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600"
+              >
+                {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          <div>
             <label className="block font-medium text-slate-700 mb-1">Alamat Email</label>
             <input
               type="email"
@@ -374,16 +439,18 @@ export const UserManagement: React.FC = () => {
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
+              disabled={isSaving}
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
+              disabled={isSaving}
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-60"
             >
-              Simpan Pengguna
+              {isSaving ? 'Menyimpan...' : 'Simpan Pengguna'}
             </button>
           </div>
         </form>

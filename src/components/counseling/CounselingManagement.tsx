@@ -91,10 +91,10 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
     paginatedSessions.length > 0 &&
     paginatedSessions.every(s => selectedIds.has(s.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleCounselingSessions(ids);
-    APIService.logAudit(
+    await APIService.deleteMultipleCounselingSessions(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -106,12 +106,12 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
     handleRefresh();
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSession?.problemSummary) return;
 
-    const saved = APIService.saveCounselingSession(editingSession);
-    APIService.logAudit(
+    const saved = await APIService.saveCounselingSession(editingSession);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -125,10 +125,10 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
     handleRefresh();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    APIService.deleteCounselingSession(deleteTarget.id);
-    APIService.logAudit(
+    await APIService.deleteCounselingSession(deleteTarget.id);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,

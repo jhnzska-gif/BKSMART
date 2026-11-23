@@ -52,32 +52,39 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({ isOpen, on
     reader.readAsText(file);
   };
 
-  const handleExecuteImport = () => {
+  const handleExecuteImport = async () => {
     if (!csvContent.trim()) {
       setResultMessage({ type: 'error', text: 'Pilih file CSV atau tempel teks data CSV terlebih dahulu.' });
       return;
     }
 
-    const { importedCount, errors } = APIService.importStudentsFromCSV(csvContent);
-    if (importedCount > 0) {
-      APIService.logAudit(
-        currentUser?.id || 'sys',
-        currentUser?.name || 'User',
-        role,
-        'IMPORT_STUDENTS_CSV',
-        'STUDENTS',
-        `Berhasil mengimpor ${importedCount} data siswa dari file CSV`
-      );
-      setResultMessage({
-        type: 'success',
-        text: `Berhasil mengimpor ${importedCount} siswa ke dalam basis data sekolah.`
-      });
-      setCsvContent('');
-      onSuccess();
-    } else {
+    try {
+      const { importedCount, errors } = await APIService.importStudentsFromCSV(csvContent);
+      if (importedCount > 0) {
+        await APIService.logAudit(
+          currentUser?.id || 'sys',
+          currentUser?.name || 'User',
+          role,
+          'IMPORT_STUDENTS_CSV',
+          'STUDENTS',
+          `Berhasil mengimpor ${importedCount} data siswa dari file CSV`
+        );
+        setResultMessage({
+          type: 'success',
+          text: `Berhasil mengimpor ${importedCount} siswa ke dalam basis data sekolah.`
+        });
+        setCsvContent('');
+        onSuccess();
+      } else {
+        setResultMessage({
+          type: 'error',
+          text: errors.join('\n') || 'Gagal mengimpor file CSV. Periksa format kolom.'
+        });
+      }
+    } catch (err) {
       setResultMessage({
         type: 'error',
-        text: errors.join('\n') || 'Gagal mengimpor file CSV. Periksa format kolom.'
+        text: err instanceof Error ? err.message : 'Gagal menyimpan data CSV ke NeonDB.'
       });
     }
   };

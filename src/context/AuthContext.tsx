@@ -5,9 +5,9 @@ import { APIService } from '../services/api';
 interface AuthContextType {
   currentUser: User | null;
   role: UserRole;
-  login: (username: string, role?: UserRole) => boolean;
+  login: (username: string, password: string) => Promise<{ ok: boolean; error?: string }>;
   logout: () => void;
-  switchRole: (role: UserRole) => void;
+  refreshData: () => Promise<void>;
   syncVersion: number;
   // Permissions
   canViewConfidentialNotes: boolean;
@@ -36,7 +36,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (savedUserId) {
         const users = APIService.getUsers();
-        const matched = users.find((u) => u.id === savedUserId);
+        const matched = users.find((u) => u.id === savedUserId && u.active);
         if (matched) {
           APIService.setActiveRole(matched.role);
           if (matched.role === 'counselor') {
@@ -44,6 +44,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             if (!active) return;
           }
           setCurrentUser(matched);
+        } else {
+          localStorage.removeItem('bksmart_current_user_id');
         }
       }
       setSyncVersion((v) => v + 1);
@@ -55,30 +57,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
-  const login = (username: string, preferredRole?: UserRole): boolean => {
-    const users = APIService.getUsers();
-    let user = users.find((u) => u.username.toLowerCase() === username.toLowerCase());
-    if (!user && preferredRole) {
-      user = users.find((u) => u.role === preferredRole);
+  const login = async (
+    username: string,
+    password: string
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const result = await APIService.login(username, password);
+    if (!result.ok || !result.user) {
+      return {
+        ok: false,
+        error: result.error || 'Username atau kata sandi tidak sesuai.',
+      };
     }
-    if (user) {
-      APIService.setActiveRole(user.role);
-      setCurrentUser(user);
-      localStorage.setItem('bksmart_current_user_id', user.id);
-      APIService.logAudit(
-        user.id,
-        user.name,
-        user.role,
-        'LOGIN',
-        'AUTH',
-        `Pengguna ${user.name} berhasil login`
-      );
-      APIService.syncFromServer(user.role).then(() => {
-        setSyncVersion((v) => v + 1);
-      });
-      return true;
-    }
-    return false;
+
+    const user = result.user;
+    APIService.setActiveRole(user.role);
+    setCurrentUser(user);
+    localStorage.setItem('bksmart_current_user_id', user.id);
+    await APIService.logAudit(
+      user.id,
+      user.name,
+      user.role,
+      'LOGIN',
+      'AUTH',
+      `Pengguna ${user.name} berhasil login`
+    );
+    await APIService.syncFromServer(user.role);
+    setSyncVersion((v) => v + 1);
+    return { ok: true };
+  };
+
+  const refreshData = async () => {
+    const active = currentUser?.role || 'student';
+    await APIService.syncFromServer(active);
+    setSyncVersion((v) => v + 1);
   };
 
   const logout = () => {
@@ -97,27 +108,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     APIService.syncFromServer('student').then(() => {
       setSyncVersion((v) => v + 1);
     });
-  };
-
-  const switchRole = (newRole: UserRole) => {
-    const users = APIService.getUsers();
-    const targetUser = users.find((u) => u.role === newRole);
-    if (targetUser) {
-      APIService.setActiveRole(targetUser.role);
-      setCurrentUser(targetUser);
-      localStorage.setItem('bksmart_current_user_id', targetUser.id);
-      APIService.logAudit(
-        targetUser.id,
-        targetUser.name,
-        targetUser.role,
-        'SWITCH_ROLE',
-        'AUTH',
-        `Beralih peran menjadi ${newRole.toUpperCase()}`
-      );
-      APIService.syncFromServer(targetUser.role).then(() => {
-        setSyncVersion((v) => v + 1);
-      });
-    }
   };
 
   const role: UserRole = currentUser ? currentUser.role : 'student';
@@ -150,7 +140,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role,
         login,
         logout,
-        switchRole,
+        refreshData,
         syncVersion,
         canViewConfidentialNotes,
         canManageMasterData,

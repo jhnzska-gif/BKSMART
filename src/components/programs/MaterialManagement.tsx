@@ -53,10 +53,10 @@ export const MaterialManagement: React.FC = () => {
     }
   };
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleMaterials(ids);
-    APIService.logAudit(
+    await APIService.deleteMultipleMaterials(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -68,23 +68,23 @@ export const MaterialManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleDeleteSingle = () => {
+  const handleDeleteSingle = async () => {
     if (!deleteSingleTarget) return;
-    APIService.deleteMaterial(deleteSingleTarget.id);
+    await APIService.deleteMaterial(deleteSingleTarget.id);
     setDeleteSingleTarget(null);
     handleRefresh();
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingMaterial?.title) return;
 
-    APIService.saveMaterial({
+    await APIService.saveMaterial({
       ...editingMaterial,
-      authorName: currentUser?.name || 'Siti Rahmawati, S.Pd., Kons.',
+      authorName: currentUser?.name || 'Guru BK',
     });
 
-    APIService.logAudit(
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,

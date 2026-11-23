@@ -48,10 +48,10 @@ export const BKProgramManagement: React.FC = () => {
     }
   };
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultiplePrograms(ids);
-    APIService.logAudit(
+    await APIService.deleteMultiplePrograms(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -63,19 +63,19 @@ export const BKProgramManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleDeleteSingle = () => {
+  const handleDeleteSingle = async () => {
     if (!deleteSingleTarget) return;
-    APIService.deleteProgram(deleteSingleTarget.id);
+    await APIService.deleteProgram(deleteSingleTarget.id);
     setDeleteSingleTarget(null);
     handleRefresh();
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProg?.title) return;
 
-    APIService.saveProgram(editingProg);
-    APIService.logAudit(
+    await APIService.saveProgram(editingProg);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,

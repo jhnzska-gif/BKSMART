@@ -30,7 +30,7 @@ import { LoginScreen } from './components/auth/LoginScreen';
 import { UserRole } from './types';
 
 const AppContent: React.FC = () => {
-  const { currentUser, role, syncVersion } = useAuth();
+  const { currentUser, role, syncVersion, refreshData } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -67,7 +67,7 @@ const AppContent: React.FC = () => {
         );
 
       case 'my_students':
-        return <StudentManagement restrictedToClass={currentUser.assignedClass || 'XI RPL 1'} />;
+        return <StudentManagement restrictedToClass={currentUser.assignedClass || ''} />;
 
       case 'teachers':
         return <TeacherManagement />;
@@ -139,7 +139,8 @@ const AppContent: React.FC = () => {
       <ImportExportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
-        onSuccess={() => {
+        onSuccess={async () => {
+          await refreshData();
           setIsImportModalOpen(false);
           setActiveTab('students');
         }}

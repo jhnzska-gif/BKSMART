@@ -56,9 +56,9 @@ export const AuditLogViewer: React.FC = () => {
     paginatedLogs.length > 0 &&
     paginatedLogs.every(l => selectedIds.has(l.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleAuditLogs(ids);
+    await APIService.deleteMultipleAuditLogs(ids);
     setIsMultiDeleteModalOpen(false);
     handleRefresh();
   };

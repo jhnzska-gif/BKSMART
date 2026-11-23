@@ -62,26 +62,26 @@ export const AcademicManagement: React.FC = () => {
     paginatedClasses.length > 0 &&
     paginatedClasses.every(c => selectedIds.has(c.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleClasses(ids);
+    await APIService.deleteMultipleClasses(ids);
     setIsMultiDeleteModalOpen(false);
     handleRefresh();
   };
 
-  const handleSaveClass = (e: React.FormEvent) => {
+  const handleSaveClass = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingClass?.name) return;
 
-    APIService.saveClass(editingClass);
+    await APIService.saveClass(editingClass);
     setIsModalOpen(false);
     setEditingClass(null);
     handleRefresh();
   };
 
-  const handleDeleteClass = () => {
+  const handleDeleteClass = async () => {
     if (!deleteTarget) return;
-    APIService.deleteClass(deleteTarget.id);
+    await APIService.deleteClass(deleteTarget.id);
     setDeleteTarget(null);
     handleRefresh();
   };
@@ -126,9 +126,9 @@ export const AcademicManagement: React.FC = () => {
                   onClick={() => {
                     setEditingClass({
                       grade: '10',
-                      studentCount: 36,
-                      academicYear: '2024/2025',
-                      majorName: 'Rekayasa Perangkat Lunak',
+                      studentCount: 0,
+                      academicYear: academicYears.find(a => a.isActive)?.year || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
+                      majorName: majors[0]?.name || '',
                     });
                     setIsModalOpen(true);
                   }}
@@ -237,14 +237,18 @@ export const AcademicManagement: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-900">Program Keahlian / Jurusan</h3>
             </div>
             <div className="space-y-2">
-              {majors.map((m) => (
-                <div key={m.id} className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/60 text-xs flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-900">{m.code}</span> · {m.name}
-                    <p className="text-[11px] text-slate-400">Kaprog: {m.headOfMajor || '-'}</p>
+              {majors.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">Belum ada data jurusan.</p>
+              ) : (
+                majors.map((m) => (
+                  <div key={m.id} className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/60 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900">{m.code}</span> · {m.name}
+                      <p className="text-[11px] text-slate-400">Kaprog: {m.headOfMajor || '-'}</p>
+                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
@@ -255,15 +259,19 @@ export const AcademicManagement: React.FC = () => {
               <h3 className="text-sm font-bold text-slate-900">Tahun Ajaran & Semester</h3>
             </div>
             <div className="space-y-2">
-              {academicYears.map((ay) => (
-                <div key={ay.id} className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/60 text-xs flex items-center justify-between">
-                  <div>
-                    <span className="font-bold text-slate-900">{ay.year}</span>
-                    <span className="text-slate-500 ml-1.5 font-medium">Semester {ay.semester}</span>
+              {academicYears.length === 0 ? (
+                <p className="text-xs text-slate-400 py-3 text-center">Belum ada data tahun ajaran.</p>
+              ) : (
+                academicYears.map((ay) => (
+                  <div key={ay.id} className="p-2.5 rounded-lg border border-slate-100 bg-slate-50/60 text-xs flex items-center justify-between">
+                    <div>
+                      <span className="font-bold text-slate-900">{ay.year}</span>
+                      <span className="text-slate-500 ml-1.5 font-medium">Semester {ay.semester}</span>
+                    </div>
+                    {ay.isActive && <Badge variant="emerald">Aktif</Badge>}
                   </div>
-                  {ay.isActive && <Badge variant="emerald">Aktif</Badge>}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -311,6 +319,17 @@ export const AcademicManagement: React.FC = () => {
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
             </div>
+          </div>
+
+          <div>
+            <label className="block font-medium text-slate-700 mb-1">Jurusan / Program Keahlian</label>
+            <input
+              type="text"
+              value={editingClass?.majorName || ''}
+              onChange={(e) => setEditingClass({ ...editingClass, majorName: e.target.value })}
+              className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+              placeholder="misal: Rekayasa Perangkat Lunak"
+            />
           </div>
 
           <div>

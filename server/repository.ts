@@ -15,7 +15,7 @@ import type {
   AuditLog,
   UserRole,
 } from '../src/types/index.ts';
-import { ensureNeonReady, memoryStore } from './db.ts';
+import { ensureNeonReady, hashPassword, memoryStore, verifyPassword, withNeonRetry } from './db.ts';
 
 function sanitizeRole(roleHeader: unknown): UserRole {
   const valid: UserRole[] = ['admin', 'counselor', 'teacher', 'student', 'principal'];
@@ -29,8 +29,57 @@ export class BKSmartRepository {
     const canSeeConfidential = callerRole === 'counselor';
 
     try {
-      const pool = await ensureNeonReady();
-      if (!pool) {
+      const dbResult = await withNeonRetry(async (pool) => {
+        const [
+          usersRes,
+          studentsRes,
+          teachersRes,
+          classesRes,
+          majorsRes,
+          yearsRes,
+          sessionsRes,
+          referralsRes,
+          casesRes,
+          programsRes,
+          assessmentsRes,
+          submissionsRes,
+          materialsRes,
+          auditRes,
+        ] = await Promise.all([
+          pool.query('SELECT * FROM users ORDER BY created_at ASC'),
+          pool.query('SELECT * FROM students ORDER BY id ASC'),
+          pool.query('SELECT * FROM teachers ORDER BY id ASC'),
+          pool.query('SELECT * FROM school_classes ORDER BY name ASC'),
+          pool.query('SELECT * FROM majors ORDER BY code ASC'),
+          pool.query('SELECT * FROM academic_years ORDER BY year DESC, semester DESC'),
+          pool.query('SELECT * FROM counseling_sessions ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM referrals ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM student_cases ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM bk_programs ORDER BY id ASC'),
+          pool.query('SELECT * FROM assessments ORDER BY id ASC'),
+          pool.query('SELECT * FROM assessment_submissions ORDER BY submitted_at DESC'),
+          pool.query('SELECT * FROM bk_materials ORDER BY created_at DESC'),
+          pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100'),
+        ]);
+        return {
+          usersRes,
+          studentsRes,
+          teachersRes,
+          classesRes,
+          majorsRes,
+          yearsRes,
+          sessionsRes,
+          referralsRes,
+          casesRes,
+          programsRes,
+          assessmentsRes,
+          submissionsRes,
+          materialsRes,
+          auditRes,
+        };
+      });
+
+      if (!dbResult) {
         return {
           users: memoryStore.users,
           students: memoryStore.students,
@@ -53,7 +102,7 @@ export class BKSmartRepository {
         };
       }
 
-      const [
+      const {
         usersRes,
         studentsRes,
         teachersRes,
@@ -68,22 +117,7 @@ export class BKSmartRepository {
         submissionsRes,
         materialsRes,
         auditRes,
-      ] = await Promise.all([
-        pool.query('SELECT * FROM users ORDER BY created_at ASC'),
-        pool.query('SELECT * FROM students ORDER BY id ASC'),
-        pool.query('SELECT * FROM teachers ORDER BY id ASC'),
-        pool.query('SELECT * FROM school_classes ORDER BY name ASC'),
-        pool.query('SELECT * FROM majors ORDER BY code ASC'),
-        pool.query('SELECT * FROM academic_years ORDER BY year DESC, semester DESC'),
-        pool.query('SELECT * FROM counseling_sessions ORDER BY created_at DESC'),
-        pool.query('SELECT * FROM referrals ORDER BY created_at DESC'),
-        pool.query('SELECT * FROM student_cases ORDER BY created_at DESC'),
-        pool.query('SELECT * FROM bk_programs ORDER BY id ASC'),
-        pool.query('SELECT * FROM assessments ORDER BY id ASC'),
-        pool.query('SELECT * FROM assessment_submissions ORDER BY submitted_at DESC'),
-        pool.query('SELECT * FROM bk_materials ORDER BY created_at DESC'),
-        pool.query('SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT 100'),
-      ]);
+      } = dbResult;
 
       return {
         users: usersRes.rows.map((r): User => ({
@@ -278,21 +312,78 @@ export class BKSmartRepository {
     }
   }
 
+  // AUTHENTICATION
+  static async authenticateUser(username: string, password: string): Promise<User | null> {
+    try {
+      let dbRow: Record<string, unknown> | undefined;
+      const poolHandled = await withNeonRetry(async (pool) => {
+        const res = await pool.query(
+          'SELECT * FROM users WHERE LOWER(username) = LOWER($1) LIMIT 1',
+          [username]
+        );
+        dbRow = res.rows[0];
+        return true;
+      });
+
+      if (!poolHandled) {
+        const found = memoryStore.users.find(
+          (u) => u.username.toLowerCase() === username.toLowerCase()
+        );
+        if (!found || !found.active) return null;
+        const storedHash = memoryStore.userPasswords[found.id];
+        if (!verifyPassword(password, storedHash)) return null;
+        return found;
+      }
+
+      const r = dbRow;
+      if (!r || !r.active) return null;
+      if (!verifyPassword(password, String(r.password_hash || ''))) return null;
+
+      return {
+        id: String(r.id),
+        username: String(r.username),
+        name: String(r.name),
+        email: String(r.email || ''),
+        role: r.role as UserRole,
+        avatar: r.avatar ? String(r.avatar) : undefined,
+        nipOrNisn: r.nip_or_nisn ? String(r.nip_or_nisn) : '',
+        phone: r.phone ? String(r.phone) : '',
+        assignedClass: r.assigned_class ? String(r.assigned_class) : undefined,
+        gradeLevel: r.grade_level ? String(r.grade_level) : undefined,
+        active: Boolean(r.active),
+        createdAt: String(r.created_at),
+      };
+    } catch (error) {
+      console.error('authenticateUser failed:', error);
+      throw new Error('Gagal memverifikasi kredensial pengguna.', { cause: error });
+    }
+  }
+
   // USERS
   static async saveUser(user: User): Promise<User> {
     try {
+      const { password, ...cleanUser } = user;
+      const passwordHash =
+        typeof password === 'string' && password.trim().length > 0
+          ? hashPassword(password)
+          : '';
+
       const pool = await ensureNeonReady();
       if (!pool) {
-        const idx = memoryStore.users.findIndex((u) => u.id === user.id);
-        if (idx !== -1) memoryStore.users[idx] = user;
-        else memoryStore.users.push(user);
-        return user;
+        const idx = memoryStore.users.findIndex((u) => u.id === cleanUser.id);
+        if (idx !== -1) memoryStore.users[idx] = cleanUser;
+        else memoryStore.users.push(cleanUser);
+        if (passwordHash) {
+          memoryStore.userPasswords[cleanUser.id] = passwordHash;
+        }
+        return cleanUser;
       }
       await pool.query(
-        `INSERT INTO users (id, username, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+        `INSERT INTO users (id, username, password_hash, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
          ON CONFLICT (id) DO UPDATE SET
            username = EXCLUDED.username,
+           password_hash = COALESCE(NULLIF(EXCLUDED.password_hash, ''), users.password_hash),
            name = EXCLUDED.name,
            email = EXCLUDED.email,
            role = EXCLUDED.role,
@@ -302,9 +393,23 @@ export class BKSmartRepository {
            assigned_class = EXCLUDED.assigned_class,
            grade_level = EXCLUDED.grade_level,
            active = EXCLUDED.active`,
-        [user.id, user.username, user.name, user.email, user.role, user.avatar ?? null, user.nipOrNisn ?? '', user.phone ?? '', user.assignedClass ?? null, user.gradeLevel ?? null, user.active, user.createdAt]
+        [
+          cleanUser.id,
+          cleanUser.username,
+          passwordHash,
+          cleanUser.name,
+          cleanUser.email,
+          cleanUser.role,
+          cleanUser.avatar ?? null,
+          cleanUser.nipOrNisn ?? '',
+          cleanUser.phone ?? '',
+          cleanUser.assignedClass ?? null,
+          cleanUser.gradeLevel ?? null,
+          cleanUser.active,
+          cleanUser.createdAt,
+        ]
       );
-      return user;
+      return cleanUser;
     } catch (error) {
       console.error('saveUser failed:', error);
       throw new Error('Gagal menyimpan data pengguna.', { cause: error });
@@ -329,40 +434,78 @@ export class BKSmartRepository {
 
   // STUDENTS
   static async saveStudent(s: Student): Promise<Student> {
+    const clean: Student = {
+      id: s.id,
+      nisn: s.nisn ?? '',
+      nis: s.nis ?? '',
+      name: s.name || 'Siswa Baru',
+      gender: s.gender === 'P' ? 'P' : 'L',
+      classId: s.classId ?? '',
+      className: s.className || '-',
+      majorId: s.majorId ?? '',
+      majorName: s.majorName || '-',
+      academicYear: s.academicYear || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
+      parentName: s.parentName ?? '-',
+      parentPhone: s.parentPhone ?? '-',
+      studentPhone: s.studentPhone ?? '-',
+      address: s.address ?? '-',
+      status: s.status || 'active',
+      counselingCount: Number(s.counselingCount ?? 0),
+      openCasesCount: Number(s.openCasesCount ?? 0),
+    };
     try {
-      const pool = await ensureNeonReady();
-      if (!pool) {
-        const idx = memoryStore.students.findIndex((x) => x.id === s.id);
-        if (idx !== -1) memoryStore.students[idx] = s;
-        else memoryStore.students.unshift(s);
-        return s;
+      const result = await withNeonRetry(async (pool) => {
+        await pool.query(
+          `INSERT INTO students (id, nisn, nis, name, gender, class_id, class_name, major_id, major_name, academic_year, parent_name, parent_phone, student_phone, address, status, counseling_count, open_cases_count)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+           ON CONFLICT (id) DO UPDATE SET
+             nisn = EXCLUDED.nisn,
+             nis = EXCLUDED.nis,
+             name = EXCLUDED.name,
+             gender = EXCLUDED.gender,
+             class_id = EXCLUDED.class_id,
+             class_name = EXCLUDED.class_name,
+             major_id = EXCLUDED.major_id,
+             major_name = EXCLUDED.major_name,
+             academic_year = EXCLUDED.academic_year,
+             parent_name = EXCLUDED.parent_name,
+             parent_phone = EXCLUDED.parent_phone,
+             student_phone = EXCLUDED.student_phone,
+             address = EXCLUDED.address,
+             status = EXCLUDED.status,
+             counseling_count = EXCLUDED.counseling_count,
+             open_cases_count = EXCLUDED.open_cases_count`,
+          [
+            clean.id,
+            clean.nisn,
+            clean.nis,
+            clean.name,
+            clean.gender,
+            clean.classId,
+            clean.className,
+            clean.majorId,
+            clean.majorName,
+            clean.academicYear,
+            clean.parentName,
+            clean.parentPhone,
+            clean.studentPhone,
+            clean.address,
+            clean.status,
+            clean.counselingCount,
+            clean.openCasesCount,
+          ]
+        );
+        return clean;
+      });
+      if (!result) {
+        const idx = memoryStore.students.findIndex((x) => x.id === clean.id);
+        if (idx !== -1) memoryStore.students[idx] = clean;
+        else memoryStore.students.unshift(clean);
       }
-      await pool.query(
-        `INSERT INTO students (id, nisn, nis, name, gender, class_id, class_name, major_id, major_name, academic_year, parent_name, parent_phone, student_phone, address, status, counseling_count, open_cases_count)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-         ON CONFLICT (id) DO UPDATE SET
-           nisn = EXCLUDED.nisn,
-           nis = EXCLUDED.nis,
-           name = EXCLUDED.name,
-           gender = EXCLUDED.gender,
-           class_id = EXCLUDED.class_id,
-           class_name = EXCLUDED.class_name,
-           major_id = EXCLUDED.major_id,
-           major_name = EXCLUDED.major_name,
-           academic_year = EXCLUDED.academic_year,
-           parent_name = EXCLUDED.parent_name,
-           parent_phone = EXCLUDED.parent_phone,
-           student_phone = EXCLUDED.student_phone,
-           address = EXCLUDED.address,
-           status = EXCLUDED.status,
-           counseling_count = EXCLUDED.counseling_count,
-           open_cases_count = EXCLUDED.open_cases_count`,
-        [s.id, s.nisn, s.nis, s.name, s.gender, s.classId, s.className, s.majorId, s.majorName, s.academicYear, s.parentName, s.parentPhone, s.studentPhone, s.address, s.status, s.counselingCount ?? 0, s.openCasesCount ?? 0]
-      );
-      return s;
+      return clean;
     } catch (error) {
       console.error('saveStudent failed:', error);
-      throw new Error('Gagal menyimpan data siswa.', { cause: error });
+      throw new Error('Gagal menyimpan data siswa ke database.', { cause: error });
     }
   }
 
@@ -448,29 +591,41 @@ export class BKSmartRepository {
 
   // CLASSES
   static async saveClass(c: SchoolClass): Promise<SchoolClass> {
+    const clean: SchoolClass = {
+      id: c.id,
+      name: c.name || 'Kelas Baru',
+      grade: c.grade || '10',
+      majorId: c.majorId ?? '',
+      majorName: c.majorName || '-',
+      homeroomTeacherId: c.homeroomTeacherId,
+      homeroomTeacherName: c.homeroomTeacherName,
+      studentCount: Number(c.studentCount ?? 0),
+      academicYear: c.academicYear || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
+    };
     try {
-      const pool = await ensureNeonReady();
-      if (!pool) {
-        const idx = memoryStore.classes.findIndex((x) => x.id === c.id);
-        if (idx !== -1) memoryStore.classes[idx] = c;
-        else memoryStore.classes.push(c);
-        return c;
+      const result = await withNeonRetry(async (pool) => {
+        await pool.query(
+          `INSERT INTO school_classes (id, name, grade, major_id, major_name, homeroom_teacher_id, homeroom_teacher_name, student_count, academic_year)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT (id) DO UPDATE SET
+             name = EXCLUDED.name,
+             grade = EXCLUDED.grade,
+             major_id = EXCLUDED.major_id,
+             major_name = EXCLUDED.major_name,
+             homeroom_teacher_id = EXCLUDED.homeroom_teacher_id,
+             homeroom_teacher_name = EXCLUDED.homeroom_teacher_name,
+             student_count = EXCLUDED.student_count,
+             academic_year = EXCLUDED.academic_year`,
+          [clean.id, clean.name, clean.grade, clean.majorId, clean.majorName, clean.homeroomTeacherId ?? null, clean.homeroomTeacherName ?? null, clean.studentCount, clean.academicYear]
+        );
+        return clean;
+      });
+      if (!result) {
+        const idx = memoryStore.classes.findIndex((x) => x.id === clean.id);
+        if (idx !== -1) memoryStore.classes[idx] = clean;
+        else memoryStore.classes.push(clean);
       }
-      await pool.query(
-        `INSERT INTO school_classes (id, name, grade, major_id, major_name, homeroom_teacher_id, homeroom_teacher_name, student_count, academic_year)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-         ON CONFLICT (id) DO UPDATE SET
-           name = EXCLUDED.name,
-           grade = EXCLUDED.grade,
-           major_id = EXCLUDED.major_id,
-           major_name = EXCLUDED.major_name,
-           homeroom_teacher_id = EXCLUDED.homeroom_teacher_id,
-           homeroom_teacher_name = EXCLUDED.homeroom_teacher_name,
-           student_count = EXCLUDED.student_count,
-           academic_year = EXCLUDED.academic_year`,
-        [c.id, c.name, c.grade, c.majorId, c.majorName, c.homeroomTeacherId ?? null, c.homeroomTeacherName ?? null, c.studentCount, c.academicYear]
-      );
-      return c;
+      return clean;
     } catch (error) {
       console.error('saveClass failed:', error);
       throw new Error('Gagal menyimpan data kelas.', { cause: error });

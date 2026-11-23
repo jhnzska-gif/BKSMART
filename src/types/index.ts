@@ -13,6 +13,7 @@ export interface User {
   gradeLevel?: string;   // For Student
   active: boolean;
   createdAt: string;
+  password?: string; // Write-only payload when creating/updating user password
 }
 
 export interface Student {

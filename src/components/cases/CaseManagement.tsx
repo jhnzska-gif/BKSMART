@@ -73,10 +73,10 @@ export const CaseManagement: React.FC = () => {
     paginatedCases.length > 0 &&
     paginatedCases.every(c => selectedIds.has(c.id));
 
-  const handleExecuteMultiDelete = () => {
+  const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    APIService.deleteMultipleCases(ids);
-    APIService.logAudit(
+    await APIService.deleteMultipleCases(ids);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -88,20 +88,20 @@ export const CaseManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleSaveCase = (e: React.FormEvent) => {
+  const handleSaveCase = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCase?.title || !editingCase?.studentId) return;
 
     const student = students.find(s => s.id === editingCase.studentId);
-    const saved = APIService.saveCase({
+    const saved = await APIService.saveCase({
       ...editingCase,
       studentName: student?.name || editingCase.studentName,
       studentClass: student?.className || editingCase.studentClass,
-      assignedCounselorId: currentUser?.id || 'u-2',
-      assignedCounselorName: currentUser?.name || 'Siti Rahmawati, S.Pd., Kons.',
+      assignedCounselorId: currentUser?.id || '',
+      assignedCounselorName: currentUser?.name || 'Guru BK',
     });
 
-    APIService.logAudit(
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,
@@ -115,7 +115,7 @@ export const CaseManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleAddIntervention = (e: React.FormEvent) => {
+  const handleAddIntervention = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!detailCase || !newInterventionAction) return;
 
@@ -129,7 +129,7 @@ export const CaseManagement: React.FC = () => {
       }
     ];
 
-    const updated = APIService.saveCase({
+    const updated = await APIService.saveCase({
       ...detailCase,
       interventions: updatedInterventions,
     });
@@ -141,10 +141,10 @@ export const CaseManagement: React.FC = () => {
     handleRefresh();
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (!deleteTarget) return;
-    APIService.deleteCase(deleteTarget.id);
-    APIService.logAudit(
+    await APIService.deleteCase(deleteTarget.id);
+    await APIService.logAudit(
       currentUser?.id || 'sys',
       currentUser?.name || 'User',
       role,

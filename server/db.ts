@@ -1,3 +1,4 @@
+import { randomBytes, scryptSync, timingSafeEqual } from 'crypto';
 import { Pool } from 'pg';
 import type {
   User,
@@ -71,6 +72,14 @@ export function isNeonConfigured(): boolean {
   return Boolean(getDatabaseUrl());
 }
 
+export function resetPool(): void {
+  if (global._bksmartNeonPool) {
+    global._bksmartNeonPool.end().catch(() => {});
+    global._bksmartNeonPool = undefined;
+    global._bksmartSchemaPromise = undefined;
+  }
+}
+
 export function getPool(): Pool | null {
   const connectionString = getDatabaseUrl();
   if (!connectionString) return null;
@@ -91,15 +100,74 @@ export function getPool(): Pool | null {
 
     global._bksmartNeonPool.on('error', (err) => {
       console.error('Unexpected error on idle Neon PostgreSQL pool client:', err);
+      global._bksmartNeonPool = undefined;
     });
   }
 
   return global._bksmartNeonPool;
 }
 
+export function isTransientConnectionError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const msg = err.message.toLowerCase();
+  const code = (err as { code?: string }).code || '';
+  return (
+    msg.includes('connection terminated') ||
+    msg.includes('econnreset') ||
+    msg.includes('etimedout') ||
+    msg.includes('connection error') ||
+    msg.includes('socket hang up') ||
+    code === '57P01' ||
+    code === '57P02' ||
+    code === '57P03' ||
+    code === 'ECONNRESET' ||
+    code === 'ETIMEDOUT'
+  );
+}
+
+export async function withNeonRetry<T>(fn: (pool: Pool) => Promise<T>): Promise<T | null> {
+  const pool = await ensureNeonReady();
+  if (!pool) return null;
+  try {
+    return await fn(pool);
+  } catch (err) {
+    if (isTransientConnectionError(err)) {
+      console.warn('Transient NeonDB connection error, resetting pool and retrying once...');
+      resetPool();
+      const retryPool = await ensureNeonReady();
+      if (!retryPool) return null;
+      return await fn(retryPool);
+    }
+    throw err;
+  }
+}
+
+export const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123';
+
+export function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString('hex');
+  const derived = scryptSync(password, salt, 64).toString('hex');
+  return `scrypt:${salt}:${derived}`;
+}
+
+export function verifyPassword(password: string, storedHash?: string | null): boolean {
+  if (!password || !storedHash) return false;
+  if (storedHash.startsWith('scrypt:')) {
+    const parts = storedHash.split(':');
+    if (parts.length !== 3) return false;
+    const [, salt, keyHex] = parts;
+    const expected = Buffer.from(keyHex, 'hex');
+    const actual = scryptSync(password, salt, 64);
+    if (expected.length !== actual.length) return false;
+    return timingSafeEqual(expected, actual);
+  }
+  return false;
+}
+
 // In-memory store used only when DATABASE_URL is not yet configured in environment
 export interface MemoryStore {
   users: User[];
+  userPasswords: Record<string, string>;
   students: Student[];
   teachers: Teacher[];
   classes: SchoolClass[];
@@ -117,6 +185,9 @@ export interface MemoryStore {
 
 export const memoryStore: MemoryStore = {
   users: structuredClone(INITIAL_USERS),
+  userPasswords: {
+    'u-1': hashPassword(DEFAULT_ADMIN_PASSWORD),
+  },
   students: structuredClone(INITIAL_STUDENTS),
   teachers: structuredClone(INITIAL_TEACHERS),
   classes: structuredClone(INITIAL_CLASSES),
@@ -136,6 +207,7 @@ const SCHEMA_SQL = `
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL DEFAULT '',
   name TEXT NOT NULL,
   email TEXT NOT NULL DEFAULT '',
   role TEXT NOT NULL DEFAULT 'student',
@@ -147,6 +219,8 @@ CREATE TABLE IF NOT EXISTS users (
   active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TEXT NOT NULL
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT NOT NULL DEFAULT '';
 
 CREATE TABLE IF NOT EXISTS majors (
   id TEXT PRIMARY KEY,
@@ -332,131 +406,70 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_students_class_name ON students(class_name);
 CREATE INDEX IF NOT EXISTS idx_counseling_date ON counseling_sessions(session_date);
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
 `;
 
 async function seedInitialData(pool: Pool): Promise<void> {
+  // Seed ONLY the default Administrator account with password; all other tables remain clean.
+  const adminPasswordHash = hashPassword(DEFAULT_ADMIN_PASSWORD);
   for (const u of INITIAL_USERS) {
     await pool.query(
-      `INSERT INTO users (id, username, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      `INSERT INTO users (id, username, password_hash, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        ON CONFLICT (id) DO NOTHING`,
-      [u.id, u.username, u.name, u.email, u.role, u.avatar ?? null, u.nipOrNisn ?? '', u.phone ?? '', u.assignedClass ?? null, u.gradeLevel ?? null, u.active, u.createdAt]
+      [
+        u.id,
+        u.username,
+        adminPasswordHash,
+        u.name,
+        u.email,
+        u.role,
+        u.avatar ?? null,
+        u.nipOrNisn ?? '',
+        u.phone ?? '',
+        u.assignedClass ?? null,
+        u.gradeLevel ?? null,
+        u.active,
+        u.createdAt,
+      ]
     );
   }
 
-  for (const m of INITIAL_MAJORS) {
-    await pool.query(
-      `INSERT INTO majors (id, code, name, head_of_major) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
-      [m.id, m.code, m.name, m.headOfMajor ?? null]
-    );
-  }
+  // Ensure existing default admin account always has a valid password hash
+  await pool.query(
+    `UPDATE users SET password_hash = $1 WHERE id = 'u-1' AND (password_hash IS NULL OR password_hash = '')`,
+    [adminPasswordHash]
+  );
 
-  for (const ay of INITIAL_ACADEMIC_YEARS) {
+  // One-time migration: purge previously seeded dummy data from live NeonDB, keeping only admin (u-1)
+  const migCheck = await pool.query(
+    `SELECT 1 FROM schema_migrations WHERE name = '002_purge_dummy_data' LIMIT 1`
+  );
+  if (migCheck.rowCount === 0) {
+    await pool.query(`DELETE FROM users WHERE id IN ('u-2', 'u-3', 'u-4', 'u-5')`);
+    await pool.query(`DELETE FROM assessment_submissions`);
+    await pool.query(`DELETE FROM assessments`);
+    await pool.query(`DELETE FROM bk_materials`);
+    await pool.query(`DELETE FROM bk_programs`);
+    await pool.query(`DELETE FROM counseling_sessions`);
+    await pool.query(`DELETE FROM referrals`);
+    await pool.query(`DELETE FROM student_cases`);
+    await pool.query(`DELETE FROM students`);
+    await pool.query(`DELETE FROM teachers`);
+    await pool.query(`DELETE FROM school_classes`);
+    await pool.query(`DELETE FROM majors`);
+    await pool.query(`DELETE FROM academic_years`);
+    await pool.query(`DELETE FROM audit_logs`);
     await pool.query(
-      `INSERT INTO academic_years (id, year, semester, is_active) VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
-      [ay.id, ay.year, ay.semester, ay.isActive]
-    );
-  }
-
-  for (const t of INITIAL_TEACHERS) {
-    await pool.query(
-      `INSERT INTO teachers (id, nip, name, gender, email, phone, role, specialization, assigned_class)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (id) DO NOTHING`,
-      [t.id, t.nip, t.name, t.gender, t.email, t.phone, t.role, t.specialization ?? null, t.assignedClass ?? null]
-    );
-  }
-
-  for (const c of INITIAL_CLASSES) {
-    await pool.query(
-      `INSERT INTO school_classes (id, name, grade, major_id, major_name, homeroom_teacher_id, homeroom_teacher_name, student_count, academic_year)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (id) DO NOTHING`,
-      [c.id, c.name, c.grade, c.majorId, c.majorName, c.homeroomTeacherId ?? null, c.homeroomTeacherName ?? null, c.studentCount, c.academicYear]
-    );
-  }
-
-  for (const s of INITIAL_STUDENTS) {
-    await pool.query(
-      `INSERT INTO students (id, nisn, nis, name, gender, class_id, class_name, major_id, major_name, academic_year, parent_name, parent_phone, student_phone, address, status, counseling_count, open_cases_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
-       ON CONFLICT (id) DO NOTHING`,
-      [s.id, s.nisn, s.nis, s.name, s.gender, s.classId, s.className, s.majorId, s.majorName, s.academicYear, s.parentName, s.parentPhone, s.studentPhone, s.address, s.status, s.counselingCount ?? 0, s.openCasesCount ?? 0]
-    );
-  }
-
-  for (const cs of INITIAL_COUNSELING_SESSIONS) {
-    await pool.query(
-      `INSERT INTO counseling_sessions (id, ticket_number, student_id, student_name, student_class, counselor_id, counselor_name, type, domain, session_date, session_time, location, status, problem_summary, confidential_notes, action_plan, outcome_summary, follow_up_date, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
-       ON CONFLICT (id) DO NOTHING`,
-      [cs.id, cs.ticketNumber, cs.studentId, cs.studentName, cs.studentClass, cs.counselorId, cs.counselorName, cs.type, cs.domain, cs.sessionDate, cs.sessionTime, cs.location, cs.status, cs.problemSummary, cs.confidentialNotes ?? '', cs.actionPlan ?? '', cs.outcomeSummary ?? '', cs.followUpDate ?? null, cs.createdAt]
-    );
-  }
-
-  for (const r of INITIAL_REFERRALS) {
-    await pool.query(
-      `INSERT INTO referrals (id, referral_number, student_id, student_name, student_class, referred_by_teacher_id, referred_by_teacher_name, counselor_id, counselor_name, reason, indicators, urgency, status, counselor_feedback, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::jsonb,$12,$13,$14,$15,$16)
-       ON CONFLICT (id) DO NOTHING`,
-      [r.id, r.referralNumber, r.studentId, r.studentName, r.studentClass, r.referredByTeacherId, r.referredByTeacherName, r.counselorId ?? null, r.counselorName ?? null, r.reason, JSON.stringify(r.indicators || []), r.urgency, r.status, r.counselorFeedback ?? '', r.createdAt, r.updatedAt]
-    );
-  }
-
-  for (const c of INITIAL_CASES) {
-    await pool.query(
-      `INSERT INTO student_cases (id, case_number, title, student_id, student_name, student_class, category, priority, status, assigned_counselor_id, assigned_counselor_name, incident_date, chronology_summary, confidential_details, interventions, resolution_notes, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,$16,$17,$18)
-       ON CONFLICT (id) DO NOTHING`,
-      [c.id, c.caseNumber, c.title, c.studentId, c.studentName, c.studentClass, c.category, c.priority, c.status, c.assignedCounselorId, c.assignedCounselorName, c.incidentDate, c.chronologySummary, c.confidentialDetails ?? '', JSON.stringify(c.interventions || []), c.resolutionNotes ?? '', c.createdAt, c.updatedAt]
-    );
-  }
-
-  for (const p of INITIAL_PROGRAMS) {
-    await pool.query(
-      `INSERT INTO bk_programs (id, title, domain, target_grade, semester, academic_year, objectives, scheduled_month, status, completion_percentage)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-       ON CONFLICT (id) DO NOTHING`,
-      [p.id, p.title, p.domain, p.targetGrade, p.semester, p.academicYear, p.objectives, p.scheduledMonth, p.status, p.completionPercentage]
-    );
-  }
-
-  for (const a of INITIAL_ASSESSMENTS) {
-    await pool.query(
-      `INSERT INTO assessments (id, title, code, description, target_class, questions, deadline, status, submission_count, total_target)
-       VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
-       ON CONFLICT (id) DO NOTHING`,
-      [a.id, a.title, a.code, a.description, a.targetClass, JSON.stringify(a.questions || []), a.deadline, a.status, a.submissionCount, a.totalTarget]
-    );
-  }
-
-  for (const sub of INITIAL_SUBMISSIONS) {
-    await pool.query(
-      `INSERT INTO assessment_submissions (id, assessment_id, assessment_title, student_id, student_name, student_class, submitted_at, answers, result_summary)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9::jsonb)
-       ON CONFLICT (id) DO NOTHING`,
-      [sub.id, sub.assessmentId, sub.assessmentTitle, sub.studentId, sub.studentName, sub.studentClass, sub.submittedAt, JSON.stringify(sub.answers || {}), JSON.stringify(sub.resultSummary || {})]
-    );
-  }
-
-  for (const m of INITIAL_MATERIALS) {
-    await pool.query(
-      `INSERT INTO bk_materials (id, title, domain, target_grade, author_name, summary, content, has_task, task_prompt, created_at, read_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-       ON CONFLICT (id) DO NOTHING`,
-      [m.id, m.title, m.domain, m.targetGrade, m.authorName, m.summary, m.content, m.hasTask, m.taskPrompt ?? '', m.createdAt, m.readCount]
-    );
-  }
-
-  for (const log of INITIAL_AUDIT_LOGS) {
-    await pool.query(
-      `INSERT INTO audit_logs (id, timestamp, user_id, user_name, user_role, action, module, description, ip_address)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-       ON CONFLICT (id) DO NOTHING`,
-      [log.id, log.timestamp, log.userId, log.userName, log.userRole, log.action, log.module, log.description, log.ipAddress]
+      `INSERT INTO schema_migrations (name, applied_at) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
+      ['002_purge_dummy_data', new Date().toISOString()]
     );
   }
 }
