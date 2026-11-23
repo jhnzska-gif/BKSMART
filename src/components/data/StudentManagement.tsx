@@ -38,6 +38,9 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingStudent, setEditingStudent] = useState<Partial<Student> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Student | null>(null);
+  const [createAccount, setCreateAccount] = useState(true);
+  const [accountUsername, setAccountUsername] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -125,6 +128,24 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
     setIsSaving(true);
     try {
       const saved = await APIService.saveStudent(editingStudent);
+      if (
+        role === 'admin' &&
+        !editingStudent.id &&
+        createAccount &&
+        accountUsername.trim() &&
+        accountPassword.trim()
+      ) {
+        await APIService.saveUser({
+          username: accountUsername.trim().toLowerCase().replace(/\s+/g, ''),
+          password: accountPassword.trim(),
+          name: saved.name,
+          role: 'student',
+          nipOrNisn: saved.nisn,
+          phone: saved.studentPhone !== '-' ? saved.studentPhone : '',
+          assignedClass: saved.className !== '-' ? saved.className : undefined,
+          active: true,
+        });
+      }
       await APIService.logAudit(
         currentUser?.id || 'sys',
         currentUser?.name || 'Admin',
@@ -135,6 +156,8 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
       );
       setIsModalOpen(false);
       setEditingStudent(null);
+      setAccountUsername('');
+      setAccountPassword('');
       handleRefresh();
     } catch (err) {
       setActionError(err instanceof Error ? err.message : 'Gagal menyimpan data siswa ke NeonDB.');
@@ -237,6 +260,9 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                   academicYear: `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`,
                   status: 'active',
                 });
+                setCreateAccount(role === 'admin');
+                setAccountUsername('');
+                setAccountPassword('siswa123');
                 setIsModalOpen(true);
               }}
               className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs"
@@ -577,6 +603,49 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
               />
             </div>
           </div>
+
+          {role === 'admin' && !editingStudent?.id && (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <label className="flex items-center gap-2 text-slate-800 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createAccount}
+                  onChange={(e) => setCreateAccount(e.target.checked)}
+                  className="rounded border-slate-300 text-slate-900 focus:ring-0"
+                />
+                <span>Sekaligus buatkan akun login portal untuk siswa ini</span>
+              </label>
+              {createAccount && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block font-medium text-slate-700 mb-1">Username Siswa *</label>
+                    <input
+                      type="text"
+                      required={createAccount}
+                      value={accountUsername}
+                      onChange={(e) =>
+                        setAccountUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                      }
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      placeholder="misal: nisn atau nama siswa"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-slate-700 mb-1">Kata Sandi Awal *</label>
+                    <input
+                      type="text"
+                      required={createAccount}
+                      minLength={4}
+                      value={accountPassword}
+                      onChange={(e) => setAccountPassword(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      placeholder="misal: siswa123"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button

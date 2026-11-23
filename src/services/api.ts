@@ -397,8 +397,77 @@ export class APIService {
     return store.majors;
   }
 
+  static async saveMajor(item: Partial<Major> & { id?: string }): Promise<Major> {
+    if (item.id) {
+      const idx = store.majors.findIndex((m) => m.id === item.id);
+      if (idx !== -1) {
+        const updated = { ...store.majors[idx], ...item } as Major;
+        const saved = await this.persistAsync<Major>('/api/majors', 'POST', updated);
+        store.majors[idx] = saved || updated;
+        return store.majors[idx];
+      }
+    }
+    const newMajor: Major = {
+      id: makeId('m'),
+      code: (item.code || 'JUR').trim().toUpperCase(),
+      name: (item.name || 'Jurusan Baru').trim(),
+      headOfMajor: item.headOfMajor?.trim() || undefined,
+    };
+    const saved = await this.persistAsync<Major>('/api/majors', 'POST', newMajor);
+    const finalMajor = saved || newMajor;
+    store.majors = [...store.majors, finalMajor];
+    return finalMajor;
+  }
+
+  static async deleteMajor(id: string): Promise<void> {
+    await this.persistAsync(`/api/majors/${encodeURIComponent(id)}`, 'DELETE');
+    store.majors = store.majors.filter((m) => m.id !== id);
+  }
+
   static getAcademicYears(): AcademicYear[] {
     return store.academicYears;
+  }
+
+  static async saveAcademicYear(
+    item: Partial<AcademicYear> & { id?: string }
+  ): Promise<AcademicYear> {
+    if (item.id) {
+      const idx = store.academicYears.findIndex((ay) => ay.id === item.id);
+      if (idx !== -1) {
+        const updated = { ...store.academicYears[idx], ...item } as AcademicYear;
+        const saved = await this.persistAsync<AcademicYear>('/api/academic-years', 'POST', updated);
+        if (updated.isActive) {
+          store.academicYears = store.academicYears.map((x) =>
+            x.id === updated.id ? (saved || updated) : { ...x, isActive: false }
+          );
+        } else {
+          store.academicYears[idx] = saved || updated;
+        }
+        return saved || updated;
+      }
+    }
+    const newYear: AcademicYear = {
+      id: makeId('ay'),
+      year: (item.year || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`).trim(),
+      semester: item.semester === 'Genap' ? 'Genap' : 'Ganjil',
+      isActive: Boolean(item.isActive),
+    };
+    const saved = await this.persistAsync<AcademicYear>('/api/academic-years', 'POST', newYear);
+    const finalYear = saved || newYear;
+    if (finalYear.isActive) {
+      store.academicYears = [
+        finalYear,
+        ...store.academicYears.map((x) => ({ ...x, isActive: false })),
+      ];
+    } else {
+      store.academicYears = [finalYear, ...store.academicYears];
+    }
+    return finalYear;
+  }
+
+  static async deleteAcademicYear(id: string): Promise<void> {
+    await this.persistAsync(`/api/academic-years/${encodeURIComponent(id)}`, 'DELETE');
+    store.academicYears = store.academicYears.filter((ay) => ay.id !== id);
   }
 
   // COUNSELING SESSIONS
@@ -806,11 +875,16 @@ export class APIService {
   }
 
   static async importStudentsFromCSV(
-    csvText: string
-  ): Promise<{ importedCount: number; errors: string[] }> {
+    csvText: string,
+    options?: { createUserAccounts?: boolean; defaultPassword?: string }
+  ): Promise<{ importedCount: number; accountsCreated: number; errors: string[] }> {
     const lines = csvText.trim().split(/\r?\n/);
     if (lines.length < 2) {
-      return { importedCount: 0, errors: ['File CSV kosong atau tidak memiliki baris data.'] };
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        errors: ['File CSV kosong atau tidak memiliki baris data.'],
+      };
     }
     const importedStudents: Student[] = [];
     const errors: string[] = [];
@@ -846,12 +920,40 @@ export class APIService {
       importedStudents.push(newS);
     }
 
+    let accountsCreated = 0;
     if (importedStudents.length > 0) {
       await this.persistAsync('/api/students/import', 'POST', { students: importedStudents });
       store.students = [...importedStudents, ...store.students];
+
+      if (options?.createUserAccounts) {
+        const existingUsernames = new Set(store.users.map((u) => u.username.toLowerCase()));
+        for (const s of importedStudents) {
+          const baseUsername = (s.nisn || s.nis || s.name.toLowerCase().replace(/[^a-z0-9]/g, ''))
+            .toLowerCase()
+            .replace(/\s+/g, '');
+          if (!baseUsername || existingUsernames.has(baseUsername)) continue;
+          try {
+            const password = options.defaultPassword?.trim() || s.nis || 'siswa123';
+            await this.saveUser({
+              username: baseUsername,
+              password,
+              name: s.name,
+              role: 'student',
+              nipOrNisn: s.nisn,
+              phone: s.studentPhone !== '-' ? s.studentPhone : '',
+              assignedClass: s.className !== '-' ? s.className : undefined,
+              active: true,
+            });
+            existingUsernames.add(baseUsername);
+            accountsCreated++;
+          } catch (err) {
+            errors.push(`Akun untuk ${s.name} (@${baseUsername}) gagal dibuat: ${err instanceof Error ? err.message : 'error'}`);
+          }
+        }
+      }
     }
 
-    return { importedCount: importedStudents.length, errors };
+    return { importedCount: importedStudents.length, accountsCreated, errors };
   }
 
   static async createFullBackup(): Promise<{

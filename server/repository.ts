@@ -648,6 +648,112 @@ export class BKSmartRepository {
     }
   }
 
+  // MAJORS
+  static async saveMajor(m: Major): Promise<Major> {
+    const clean: Major = {
+      id: m.id,
+      code: (m.code || 'JUR').trim().toUpperCase(),
+      name: (m.name || 'Jurusan Baru').trim(),
+      headOfMajor: m.headOfMajor?.trim() || undefined,
+    };
+    try {
+      const result = await withNeonRetry(async (pool) => {
+        await pool.query(
+          `INSERT INTO majors (id, code, name, head_of_major)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (id) DO UPDATE SET
+             code = EXCLUDED.code,
+             name = EXCLUDED.name,
+             head_of_major = EXCLUDED.head_of_major`,
+          [clean.id, clean.code, clean.name, clean.headOfMajor ?? null]
+        );
+        return clean;
+      });
+      if (!result) {
+        const idx = memoryStore.majors.findIndex((x) => x.id === clean.id);
+        if (idx !== -1) memoryStore.majors[idx] = clean;
+        else memoryStore.majors.push(clean);
+      }
+      return clean;
+    } catch (error) {
+      console.error('saveMajor failed:', error);
+      throw new Error('Gagal menyimpan data jurusan.', { cause: error });
+    }
+  }
+
+  static async deleteMajors(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const pool = await ensureNeonReady();
+      if (!pool) {
+        const set = new Set(ids);
+        memoryStore.majors = memoryStore.majors.filter((m) => !set.has(m.id));
+        return;
+      }
+      await pool.query('DELETE FROM majors WHERE id = ANY($1::text[])', [ids]);
+    } catch (error) {
+      console.error('deleteMajors failed:', error);
+      throw new Error('Gagal menghapus data jurusan.', { cause: error });
+    }
+  }
+
+  // ACADEMIC YEARS
+  static async saveAcademicYear(ay: AcademicYear): Promise<AcademicYear> {
+    const clean: AcademicYear = {
+      id: ay.id,
+      year: (ay.year || `${new Date().getFullYear()}/${new Date().getFullYear() + 1}`).trim(),
+      semester: ay.semester === 'Genap' ? 'Genap' : 'Ganjil',
+      isActive: Boolean(ay.isActive),
+    };
+    try {
+      const result = await withNeonRetry(async (pool) => {
+        if (clean.isActive) {
+          await pool.query('UPDATE academic_years SET is_active = FALSE WHERE id <> $1', [clean.id]);
+        }
+        await pool.query(
+          `INSERT INTO academic_years (id, year, semester, is_active)
+           VALUES ($1,$2,$3,$4)
+           ON CONFLICT (id) DO UPDATE SET
+             year = EXCLUDED.year,
+             semester = EXCLUDED.semester,
+             is_active = EXCLUDED.is_active`,
+          [clean.id, clean.year, clean.semester, clean.isActive]
+        );
+        return clean;
+      });
+      if (!result) {
+        if (clean.isActive) {
+          memoryStore.academicYears = memoryStore.academicYears.map((x) =>
+            x.id === clean.id ? x : { ...x, isActive: false }
+          );
+        }
+        const idx = memoryStore.academicYears.findIndex((x) => x.id === clean.id);
+        if (idx !== -1) memoryStore.academicYears[idx] = clean;
+        else memoryStore.academicYears.unshift(clean);
+      }
+      return clean;
+    } catch (error) {
+      console.error('saveAcademicYear failed:', error);
+      throw new Error('Gagal menyimpan data tahun ajaran.', { cause: error });
+    }
+  }
+
+  static async deleteAcademicYears(ids: string[]): Promise<void> {
+    if (ids.length === 0) return;
+    try {
+      const pool = await ensureNeonReady();
+      if (!pool) {
+        const set = new Set(ids);
+        memoryStore.academicYears = memoryStore.academicYears.filter((ay) => !set.has(ay.id));
+        return;
+      }
+      await pool.query('DELETE FROM academic_years WHERE id = ANY($1::text[])', [ids]);
+    } catch (error) {
+      console.error('deleteAcademicYears failed:', error);
+      throw new Error('Gagal menghapus data tahun ajaran.', { cause: error });
+    }
+  }
+
   // COUNSELING SESSIONS
   static async saveCounselingSession(cs: CounselingSession): Promise<CounselingSession> {
     try {
@@ -982,6 +1088,8 @@ export class BKSmartRepository {
 
     const counts: Record<string, number> = {
       users: 0,
+      majors: 0,
+      academicYears: 0,
       teachers: 0,
       classes: 0,
       students: 0,
@@ -997,6 +1105,22 @@ export class BKSmartRepository {
         if (u?.id && u?.username) {
           await this.saveUser(u);
           counts.users++;
+        }
+      }
+    }
+    if (Array.isArray(data.majors)) {
+      for (const m of data.majors as Major[]) {
+        if (m?.id && m?.name) {
+          await this.saveMajor(m);
+          counts.majors++;
+        }
+      }
+    }
+    if (Array.isArray(data.academicYears)) {
+      for (const ay of data.academicYears as AcademicYear[]) {
+        if (ay?.id && ay?.year) {
+          await this.saveAcademicYear(ay);
+          counts.academicYears++;
         }
       }
     }

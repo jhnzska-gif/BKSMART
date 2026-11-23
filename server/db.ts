@@ -144,6 +144,14 @@ export async function withNeonRetry<T>(fn: (pool: Pool) => Promise<T>): Promise<
 
 export const DEFAULT_ADMIN_PASSWORD = process.env.ADMIN_DEFAULT_PASSWORD || 'admin123';
 
+export const DEFAULT_ROLE_PASSWORDS: Record<string, string> = {
+  'u-1': DEFAULT_ADMIN_PASSWORD,
+  'u-2': 'bk123',
+  'u-3': 'wali123',
+  'u-4': 'siswa123',
+  'u-5': 'kepsek123',
+};
+
 export function hashPassword(password: string): string {
   const salt = randomBytes(16).toString('hex');
   const derived = scryptSync(password, salt, 64).toString('hex');
@@ -185,9 +193,9 @@ export interface MemoryStore {
 
 export const memoryStore: MemoryStore = {
   users: structuredClone(INITIAL_USERS),
-  userPasswords: {
-    'u-1': hashPassword(DEFAULT_ADMIN_PASSWORD),
-  },
+  userPasswords: Object.fromEntries(
+    Object.entries(DEFAULT_ROLE_PASSWORDS).map(([id, pw]) => [id, hashPassword(pw)])
+  ),
   students: structuredClone(INITIAL_STUDENTS),
   teachers: structuredClone(INITIAL_TEACHERS),
   classes: structuredClone(INITIAL_CLASSES),
@@ -417,43 +425,11 @@ CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON audit_logs(timestamp DESC);
 `;
 
 async function seedInitialData(pool: Pool): Promise<void> {
-  // Seed ONLY the default Administrator account with password; all other tables remain clean.
-  const adminPasswordHash = hashPassword(DEFAULT_ADMIN_PASSWORD);
-  for (const u of INITIAL_USERS) {
-    await pool.query(
-      `INSERT INTO users (id, username, password_hash, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
-       ON CONFLICT (id) DO NOTHING`,
-      [
-        u.id,
-        u.username,
-        adminPasswordHash,
-        u.name,
-        u.email,
-        u.role,
-        u.avatar ?? null,
-        u.nipOrNisn ?? '',
-        u.phone ?? '',
-        u.assignedClass ?? null,
-        u.gradeLevel ?? null,
-        u.active,
-        u.createdAt,
-      ]
-    );
-  }
-
-  // Ensure existing default admin account always has a valid password hash
-  await pool.query(
-    `UPDATE users SET password_hash = $1 WHERE id = 'u-1' AND (password_hash IS NULL OR password_hash = '')`,
-    [adminPasswordHash]
-  );
-
-  // One-time migration: purge previously seeded dummy data from live NeonDB, keeping only admin (u-1)
-  const migCheck = await pool.query(
+  // One-time migration: purge old dummy operational data from live NeonDB (already applied on existing DBs)
+  const migPurgeCheck = await pool.query(
     `SELECT 1 FROM schema_migrations WHERE name = '002_purge_dummy_data' LIMIT 1`
   );
-  if (migCheck.rowCount === 0) {
-    await pool.query(`DELETE FROM users WHERE id IN ('u-2', 'u-3', 'u-4', 'u-5')`);
+  if (migPurgeCheck.rowCount === 0) {
     await pool.query(`DELETE FROM assessment_submissions`);
     await pool.query(`DELETE FROM assessments`);
     await pool.query(`DELETE FROM bk_materials`);
@@ -470,6 +446,42 @@ async function seedInitialData(pool: Pool): Promise<void> {
     await pool.query(
       `INSERT INTO schema_migrations (name, applied_at) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
       ['002_purge_dummy_data', new Date().toISOString()]
+    );
+  }
+
+  // One-time migration: ensure starter login accounts exist for all 5 roles with valid hashed passwords
+  const migRolesCheck = await pool.query(
+    `SELECT 1 FROM schema_migrations WHERE name = '003_seed_default_role_accounts' LIMIT 1`
+  );
+  if (migRolesCheck.rowCount === 0) {
+    for (const u of INITIAL_USERS) {
+      const pw = DEFAULT_ROLE_PASSWORDS[u.id] || DEFAULT_ADMIN_PASSWORD;
+      const passwordHash = hashPassword(pw);
+      await pool.query(
+        `INSERT INTO users (id, username, password_hash, name, email, role, avatar, nip_or_nisn, phone, assigned_class, grade_level, active, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         ON CONFLICT (id) DO UPDATE SET
+           password_hash = COALESCE(NULLIF(users.password_hash, ''), EXCLUDED.password_hash)`,
+        [
+          u.id,
+          u.username,
+          passwordHash,
+          u.name,
+          u.email,
+          u.role,
+          u.avatar ?? null,
+          u.nipOrNisn ?? '',
+          u.phone ?? '',
+          u.assignedClass ?? null,
+          u.gradeLevel ?? null,
+          u.active,
+          u.createdAt,
+        ]
+      );
+    }
+    await pool.query(
+      `INSERT INTO schema_migrations (name, applied_at) VALUES ($1, $2) ON CONFLICT (name) DO NOTHING`,
+      ['003_seed_default_role_accounts', new Date().toISOString()]
     );
   }
 }

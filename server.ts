@@ -213,6 +213,44 @@ async function startServer() {
     }
   });
 
+  // MAJORS
+  app.post('/api/majors', async (req, res) => {
+    try {
+      const saved = await BKSmartRepository.saveMajor(req.body);
+      res.json(saved);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menyimpan jurusan' });
+    }
+  });
+
+  app.delete('/api/majors/:id', async (req, res) => {
+    try {
+      await BKSmartRepository.deleteMajors([req.params.id]);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menghapus jurusan' });
+    }
+  });
+
+  // ACADEMIC YEARS
+  app.post('/api/academic-years', async (req, res) => {
+    try {
+      const saved = await BKSmartRepository.saveAcademicYear(req.body);
+      res.json(saved);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menyimpan tahun ajaran' });
+    }
+  });
+
+  app.delete('/api/academic-years/:id', async (req, res) => {
+    try {
+      await BKSmartRepository.deleteAcademicYears([req.params.id]);
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menghapus tahun ajaran' });
+    }
+  });
+
   // COUNSELING SESSIONS
   app.post('/api/counseling-sessions', async (req, res) => {
     try {

@@ -50,7 +50,7 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Pusat Restore & Backup basis data sekolah',
       'Pengawasan jejak aktivitas audit log keamanan sistem',
     ],
-    accessHint: 'Akun default tersedia: admin / admin123',
+    accessHint: 'Username: admin · Password: admin123',
   },
   counselor: {
     role: 'counselor',
@@ -69,7 +69,7 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Pengelolaan asesmen & materi layanan BK',
       'Penanganan rujukan wali kelas & tindak lanjut kasus siswa',
     ],
-    accessHint: 'Gunakan username & kata sandi yang dibuat oleh Admin',
+    accessHint: 'Username: gurubk · Password: bk123',
   },
   teacher: {
     role: 'teacher',
@@ -88,7 +88,7 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Memantau status penanganan rujukan dan tindak lanjut',
       'Koordinasi pendampingan belajar bersama konselor',
     ],
-    accessHint: 'Gunakan username & kata sandi yang dibuat oleh Admin',
+    accessHint: 'Username: walikelas · Password: wali123',
   },
   student: {
     role: 'student',
@@ -107,7 +107,7 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Melihat hasil rekomendasi belajar dari Guru BK',
       'Membaca modul edukasi & tugas bimbingan',
     ],
-    accessHint: 'Gunakan username & kata sandi yang dibuat oleh Admin',
+    accessHint: 'Username: siswa · Password: siswa123',
   },
   principal: {
     role: 'principal',
@@ -126,8 +126,16 @@ const ROLE_OVERVIEWS: Record<UserRole, RoleOverview> = {
       'Rekapitulasi layanan tanpa catatan privat siswa',
       'Cetak dan ekspor rekapitulasi laporan resmi BK',
     ],
-    accessHint: 'Gunakan username & kata sandi yang dibuat oleh Admin',
+    accessHint: 'Username: kepsek · Password: kepsek123',
   },
+};
+
+const STARTER_CREDENTIALS: Record<UserRole, { username: string; password: string; shortLabel: string }> = {
+  admin: { username: 'admin', password: 'admin123', shortLabel: 'Admin' },
+  counselor: { username: 'gurubk', password: 'bk123', shortLabel: 'Guru BK' },
+  teacher: { username: 'walikelas', password: 'wali123', shortLabel: 'Wali Kelas' },
+  student: { username: 'siswa', password: 'siswa123', shortLabel: 'Siswa' },
+  principal: { username: 'kepsek', password: 'kepsek123', shortLabel: 'Kepala Sekolah' },
 };
 
 export const LoginScreen: React.FC = () => {
@@ -142,13 +150,9 @@ export const LoginScreen: React.FC = () => {
   const handleSelectRoleTab = (r: UserRole) => {
     setSelectedRole(r);
     setErrorMessage('');
-    if (r === 'admin') {
-      setUsername('admin');
-      setPassword('admin123');
-    } else {
-      setUsername('');
-      setPassword('');
-    }
+    const cred = STARTER_CREDENTIALS[r];
+    setUsername(cred.username);
+    setPassword(cred.password);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -264,8 +268,8 @@ export const LoginScreen: React.FC = () => {
                   <span className="block font-bold text-xs sm:text-sm text-white truncate">
                     {item.title.split(' (')[0]}
                   </span>
-                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate">
-                    {r === 'admin' ? 'Default: @admin' : 'Akun oleh Admin'}
+                  <span className="block text-[10px] text-slate-400 mt-0.5 truncate font-mono">
+                    @{STARTER_CREDENTIALS[r].username} · {STARTER_CREDENTIALS[r].password}
                   </span>
                 </div>
               </button>
@@ -426,11 +430,40 @@ export const LoginScreen: React.FC = () => {
               </form>
             </div>
 
-            <div className="mt-8 pt-5 border-t border-slate-100 text-[11px] text-slate-500 leading-relaxed">
-              <strong>Akses Awal Sistem:</strong> Gunakan akun Administrator default (
-              <span className="font-mono text-slate-800 font-semibold">admin</span> /{' '}
-              <span className="font-mono text-slate-800 font-semibold">admin123</span>) untuk
-              masuk pertama kali dan menambahkan data sekolah serta akun pengguna lainnya.
+            <div className="mt-6 pt-5 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wide">
+                  Daftar Username & Kata Sandi Awal (5 Peran)
+                </span>
+                <span className="text-[10px] text-slate-400">Klik peran untuk mengisi form</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {(Object.keys(STARTER_CREDENTIALS) as UserRole[]).map((r) => {
+                  const cred = STARTER_CREDENTIALS[r];
+                  const active = selectedRole === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => handleSelectRoleTab(r)}
+                      className={`text-left px-2.5 py-1.5 rounded-lg border text-[11px] flex items-center justify-between transition-colors ${
+                        active
+                          ? 'bg-slate-900 text-white border-slate-900'
+                          : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      <span className="font-semibold">{cred.shortLabel}</span>
+                      <span className={`font-mono ${active ? 'text-emerald-300' : 'text-slate-600'}`}>
+                        {cred.username} / {cred.password}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2.5 text-[11px] text-slate-500 leading-relaxed">
+                Setelah masuk sebagai <span className="font-mono font-semibold text-slate-700">admin</span>,
+                Anda dapat mengganti kata sandi akun awal serta menambah akun asli untuk masing-masing guru, siswa, dan kepala sekolah tanpa data dummy.
+              </p>
             </div>
           </div>
         </div>

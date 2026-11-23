@@ -4,7 +4,8 @@ import type {
   Assessment, AssessmentSubmission, BKMaterial, AuditLog
 } from '../types/index.ts';
 
-// Only the default Administrator account is pre-seeded; all operational school data starts empty.
+// 5 default role access accounts (Admin can edit/replace with real names & passwords anytime);
+// all operational school data starts empty so schools can input real data without dummy records.
 export const INITIAL_USERS: User[] = [
   {
     id: 'u-1',
@@ -16,6 +17,52 @@ export const INITIAL_USERS: User[] = [
     phone: '',
     active: true,
     createdAt: '2024-01-10T08:00:00Z',
+  },
+  {
+    id: 'u-2',
+    username: 'gurubk',
+    name: 'Guru BK (Konselor)',
+    email: 'gurubk@bksmart.sch.id',
+    role: 'counselor',
+    nipOrNisn: '',
+    phone: '',
+    active: true,
+    createdAt: '2024-01-10T08:05:00Z',
+  },
+  {
+    id: 'u-3',
+    username: 'walikelas',
+    name: 'Guru / Wali Kelas',
+    email: 'walikelas@bksmart.sch.id',
+    role: 'teacher',
+    nipOrNisn: '',
+    phone: '',
+    assignedClass: '',
+    active: true,
+    createdAt: '2024-01-10T08:10:00Z',
+  },
+  {
+    id: 'u-4',
+    username: 'siswa',
+    name: 'Akun Siswa',
+    email: 'siswa@bksmart.sch.id',
+    role: 'student',
+    nipOrNisn: '',
+    phone: '',
+    assignedClass: '',
+    active: true,
+    createdAt: '2024-01-10T08:15:00Z',
+  },
+  {
+    id: 'u-5',
+    username: 'kepsek',
+    name: 'Kepala Sekolah',
+    email: 'kepsek@bksmart.sch.id',
+    role: 'principal',
+    nipOrNisn: '',
+    phone: '',
+    active: true,
+    createdAt: '2024-01-10T08:20:00Z',
   },
 ];
 

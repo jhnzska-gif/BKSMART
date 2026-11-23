@@ -79,6 +79,82 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
         />
       </div>
 
+      {/* Panduan Pengisian Data Asli Sekolah (Tanpa Dummy) */}
+      <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
+          <div>
+            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <Database className="w-4 h-4 text-indigo-600" />
+              <span>Panduan Pengisian Data Asli Sekolah (Tanpa Data Dummy)</span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Ikuti urutan berikut untuk memasukkan seluruh nama guru, kelas, siswa, dan akun login asli sekolah ke NeonDB:
+            </p>
+          </div>
+          <span className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold self-start">
+            Tersimpan Permanen di PostgreSQL
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <button
+            type="button"
+            onClick={() => onNavigate('academic')}
+            className="text-left p-3.5 rounded-xl border border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/40 transition-colors"
+          >
+            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-indigo-100 text-indigo-700 mb-2">
+              LANGKAH 1
+            </span>
+            <p className="font-bold text-slate-900">Tahun Ajaran, Jurusan & Kelas</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Tambahkan Tahun Ajaran aktif, Program Keahlian/Jurusan, lalu Rombel Kelas asli.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('teachers')}
+            className="text-left p-3.5 rounded-xl border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors"
+          >
+            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 mb-2">
+              LANGKAH 2
+            </span>
+            <p className="font-bold text-slate-900">Nama Guru BK & Wali Kelas</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Input nama asli Guru BK & Wali Kelas sambil langsung membuatkan akun login mereka.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('students')}
+            className="text-left p-3.5 rounded-xl border border-slate-200 hover:border-amber-400 hover:bg-amber-50/40 transition-colors"
+          >
+            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-700 mb-2">
+              LANGKAH 3
+            </span>
+            <p className="font-bold text-slate-900">Data Siswa & Import CSV Excel</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Tambah siswa satu per satu atau unggah massal file CSV dari Dapodik/Excel beserta akun loginnya.
+            </p>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onNavigate('users')}
+            className="text-left p-3.5 rounded-xl border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-colors"
+          >
+            <span className="inline-block text-[10px] font-bold px-2 py-0.5 rounded bg-slate-200 text-slate-800 mb-2">
+              LANGKAH 4
+            </span>
+            <p className="font-bold text-slate-900">Kepala Sekolah & Password</p>
+            <p className="text-[11px] text-slate-500 mt-1">
+              Lengkapi akun Kepala Sekolah dan ubah password bawaan 5 peran agar sesuai standar sekolah.
+            </p>
+          </button>
+        </div>
+      </div>
+
       {/* Operational & Data Security Status Strip */}
       <div className="bg-white border border-slate-200 rounded-xl p-5 shadow-2xs">
         <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
@@ -97,10 +173,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80">
             <div className="flex items-center justify-between text-slate-500 font-medium mb-1">
               <span>Kelengkapan Master Data</span>
-              <span className="text-emerald-700 font-semibold">Lengkap</span>
+              <span className="text-emerald-700 font-semibold">Siap Diisi</span>
             </div>
             <p className="font-semibold text-slate-800">Siswa, Rombel, & Penugasan Wali Kelas</p>
-            <p className="text-[11px] text-slate-500 mt-1">Dukungan pagination, seleksi multi-delete, dan restore/backup data</p>
+            <p className="text-[11px] text-slate-500 mt-1">Dukungan pagination, seleksi multi-delete, import CSV, dan restore/backup data</p>
           </div>
           <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80">
             <div className="flex items-center justify-between text-slate-500 font-medium mb-1">

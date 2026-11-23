@@ -22,6 +22,13 @@ export const TeacherManagement: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingTeacher, setEditingTeacher] = useState<Partial<Teacher> | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Teacher | null>(null);
+  const [createAccount, setCreateAccount] = useState(true);
+  const [accountUsername, setAccountUsername] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const classes = APIService.getClasses();
 
   const handleRefresh = () => {
     setTeachers(APIService.getTeachers());
@@ -65,51 +72,92 @@ export const TeacherManagement: React.FC = () => {
 
   const handleExecuteMultiDelete = async () => {
     const ids = Array.from(selectedIds);
-    await APIService.deleteMultipleTeachers(ids);
-    await APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'MULTI_DELETE_TEACHERS',
-      'SYSTEM',
-      `Menghapus ${ids.length} data guru/konselor sekaligus`
-    );
-    setIsMultiDeleteModalOpen(false);
-    handleRefresh();
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteMultipleTeachers(ids);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'MULTI_DELETE_TEACHERS',
+        'SYSTEM',
+        `Menghapus ${ids.length} data guru/konselor sekaligus`
+      );
+      setIsMultiDeleteModalOpen(false);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus data guru/konselor.');
+      setIsMultiDeleteModalOpen(false);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingTeacher?.name) return;
+    if (!editingTeacher?.name || isSaving) return;
 
-    await APIService.saveTeacher(editingTeacher);
-    await APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      editingTeacher.id ? 'UPDATE_TEACHER' : 'CREATE_TEACHER',
-      'SYSTEM',
-      `Menyimpan data pengajar/konselor: ${editingTeacher.name}`
-    );
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      const saved = await APIService.saveTeacher(editingTeacher);
+      if (!editingTeacher.id && createAccount && accountUsername.trim() && accountPassword.trim()) {
+        await APIService.saveUser({
+          username: accountUsername.trim().toLowerCase().replace(/\s+/g, ''),
+          password: accountPassword.trim(),
+          name: saved.name,
+          email: saved.email,
+          phone: saved.phone,
+          nipOrNisn: saved.nip,
+          assignedClass: saved.role === 'teacher' ? saved.assignedClass : undefined,
+          role: saved.role,
+          active: true,
+        });
+      }
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        editingTeacher.id ? 'UPDATE_TEACHER' : 'CREATE_TEACHER',
+        'SYSTEM',
+        `Menyimpan data pengajar/konselor: ${saved.name}`
+      );
 
-    setIsModalOpen(false);
-    setEditingTeacher(null);
-    handleRefresh();
+      setIsModalOpen(false);
+      setEditingTeacher(null);
+      setAccountUsername('');
+      setAccountPassword('');
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menyimpan data guru/konselor.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleDelete = async () => {
-    if (!deleteTarget) return;
-    await APIService.deleteTeacher(deleteTarget.id);
-    await APIService.logAudit(
-      currentUser?.id || 'sys',
-      currentUser?.name || 'Admin',
-      role,
-      'DELETE_TEACHER',
-      'SYSTEM',
-      `Menghapus data pengajar/konselor: ${deleteTarget.name}`
-    );
-    setDeleteTarget(null);
-    handleRefresh();
+    if (!deleteTarget || isSaving) return;
+    setActionError(null);
+    setIsSaving(true);
+    try {
+      await APIService.deleteTeacher(deleteTarget.id);
+      await APIService.logAudit(
+        currentUser?.id || 'sys',
+        currentUser?.name || 'Admin',
+        role,
+        'DELETE_TEACHER',
+        'SYSTEM',
+        `Menghapus data pengajar/konselor: ${deleteTarget.name}`
+      );
+      setDeleteTarget(null);
+      handleRefresh();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Gagal menghapus data guru/konselor.');
+      setDeleteTarget(null);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -118,17 +166,21 @@ export const TeacherManagement: React.FC = () => {
         <div>
           <h2 className="text-lg font-bold text-slate-900 tracking-tight">Data Guru & Konselor BK</h2>
           <p className="text-xs text-slate-500">
-            Daftar tenaga pengajar, Guru BK (Konselor), dan penugasan Wali Kelas · Fitur multi-delete & paginasi
+            Daftar tenaga pengajar, Guru BK (Konselor), dan penugasan Wali Kelas · Bisa langsung membuat akun login
           </p>
         </div>
 
         <button
           type="button"
           onClick={() => {
+            setActionError(null);
             setEditingTeacher({
               role: 'counselor',
               gender: 'L',
             });
+            setCreateAccount(true);
+            setAccountUsername('');
+            setAccountPassword('');
             setIsModalOpen(true);
           }}
           className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs"
@@ -259,11 +311,16 @@ export const TeacherManagement: React.FC = () => {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={() => !isSaving && setIsModalOpen(false)}
         title={editingTeacher?.id ? 'Ubah Data Tenaga Pendidik' : 'Tambah Guru / Konselor'}
         maxWidth="md"
       >
         <form onSubmit={handleSave} className="space-y-3 text-xs">
+          {actionError && (
+            <div className="p-2.5 rounded-lg bg-rose-50 border border-rose-200 text-rose-700 text-xs">
+              {actionError}
+            </div>
+          )}
           <div>
             <label className="block font-medium text-slate-700 mb-1">Nama Lengkap & Gelar *</label>
             <input
@@ -316,19 +373,32 @@ export const TeacherManagement: React.FC = () => {
               <label className="block font-medium text-slate-700 mb-1">
                 {editingTeacher?.role === 'counselor' ? 'Spesialisasi BK' : 'Kelas Binaan (Wali Kelas)'}
               </label>
-              <input
-                type="text"
-                value={editingTeacher?.role === 'counselor' ? (editingTeacher?.specialization || '') : (editingTeacher?.assignedClass || '')}
-                onChange={(e) => {
-                  if (editingTeacher?.role === 'counselor') {
-                    setEditingTeacher({ ...editingTeacher, specialization: e.target.value });
-                  } else {
-                    setEditingTeacher({ ...editingTeacher, assignedClass: e.target.value });
-                  }
-                }}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-                placeholder={editingTeacher?.role === 'counselor' ? 'misal: Karier & Pribadi' : 'misal: XI RPL 1'}
-              />
+              {editingTeacher?.role === 'teacher' && classes.length > 0 ? (
+                <select
+                  value={editingTeacher?.assignedClass || ''}
+                  onChange={(e) => setEditingTeacher({ ...editingTeacher, assignedClass: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="">-- Pilih Kelas Binaan --</option>
+                  {classes.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={editingTeacher?.role === 'counselor' ? (editingTeacher?.specialization || '') : (editingTeacher?.assignedClass || '')}
+                  onChange={(e) => {
+                    if (editingTeacher?.role === 'counselor') {
+                      setEditingTeacher({ ...editingTeacher, specialization: e.target.value });
+                    } else {
+                      setEditingTeacher({ ...editingTeacher, assignedClass: e.target.value });
+                    }
+                  }}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  placeholder={editingTeacher?.role === 'counselor' ? 'misal: Karier & Pribadi' : 'misal: XI RPL 1'}
+                />
+              )}
             </div>
           </div>
 
@@ -340,7 +410,7 @@ export const TeacherManagement: React.FC = () => {
                 value={editingTeacher?.email || ''}
                 onChange={(e) => setEditingTeacher({ ...editingTeacher, email: e.target.value })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-                placeholder="guru@bksmart.sch.id"
+                placeholder="guru@sekolah.sch.id"
               />
             </div>
             <div>
@@ -355,19 +425,64 @@ export const TeacherManagement: React.FC = () => {
             </div>
           </div>
 
+          {!editingTeacher?.id && (
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+              <label className="flex items-center gap-2 text-slate-800 font-semibold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={createAccount}
+                  onChange={(e) => setCreateAccount(e.target.checked)}
+                  className="rounded border-slate-300 text-slate-900 focus:ring-0"
+                />
+                <span>Sekaligus buatkan akun login pengguna untuk guru ini</span>
+              </label>
+              {createAccount && (
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <div>
+                    <label className="block font-medium text-slate-700 mb-1">Username *</label>
+                    <input
+                      type="text"
+                      required={createAccount}
+                      value={accountUsername}
+                      onChange={(e) =>
+                        setAccountUsername(e.target.value.toLowerCase().replace(/\s+/g, ''))
+                      }
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      placeholder="misal: sitirahma"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-medium text-slate-700 mb-1">Kata Sandi *</label>
+                    <input
+                      type="text"
+                      required={createAccount}
+                      minLength={4}
+                      value={accountPassword}
+                      onChange={(e) => setAccountPassword(e.target.value)}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono bg-white focus:outline-none focus:ring-1 focus:ring-slate-900"
+                      placeholder="Minimal 4 karakter"
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button
               type="button"
+              disabled={isSaving}
               onClick={() => setIsModalOpen(false)}
-              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors"
+              className="px-4 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50"
             >
               Batal
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors"
+              disabled={isSaving}
+              className="px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-60"
             >
-              Simpan
+              {isSaving ? 'Menyimpan...' : 'Simpan'}
             </button>
           </div>
         </form>
