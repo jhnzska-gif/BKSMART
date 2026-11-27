@@ -19,6 +19,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
     principal: { label: 'Kepala Sekolah', icon: <Building2 className="w-3.5 h-3.5" />, color: 'bg-rose-700 text-white', desc: 'Laporan & Statistik Evaluasi' },
   };
 
+  const getInitials = (name?: string) => {
+    if (!name) return 'BK';
+    const cleaned = name.replace(/^(dra\.|drs\.|ir\.|prof\.|h\.|hj\.)\s+/i, '').trim();
+    const parts = cleaned.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    }
+    return cleaned.substring(0, 2).toUpperCase() || 'BK';
+  };
+
   return (
     <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-xs no-print">
       <div className="flex items-center justify-between px-3 sm:px-6 py-2.5 gap-2">
@@ -58,15 +68,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onToggleMobileSidebar }) => {
 
           {/* User Info */}
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold uppercase shadow-2xs">
-              {currentUser?.name.substring(0, 2) || 'BK'}
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-900 text-white flex items-center justify-center text-xs font-bold uppercase shadow-2xs shrink-0">
+              {getInitials(currentUser?.name)}
             </div>
             <div className="hidden md:block text-left">
-              <p className="text-xs font-semibold text-slate-900 leading-tight truncate max-w-[130px]">
+              <p className="text-xs font-semibold text-slate-900 leading-tight truncate max-w-[240px]">
                 {currentUser?.name}
               </p>
-              <p className="text-[10px] text-slate-500 font-mono">
+              <p className="text-[10px] text-slate-500 font-mono truncate max-w-[240px]">
                 {currentUser?.username ? `@${currentUser.username}` : roleConfigs[role]?.label}
+                {currentUser?.assignedClass ? ` · ${currentUser.assignedClass}` : ''}
               </p>
             </div>
           </div>

@@ -95,31 +95,54 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
               onClick={() => onNavigate('student_counseling')}
               className="text-xs font-semibold text-blue-600 hover:text-blue-700"
             >
-              Ajukan Baru →
+              Kelola / Edit / Hapus →
             </button>
           </div>
 
-          <div className="space-y-3">
-            {mySessions.map((s) => (
-              <div key={s.id} className="p-3.5 rounded-lg border border-slate-200 text-xs">
-                <div className="flex items-center justify-between">
-                  <span className="font-semibold text-slate-900">{s.ticketNumber} · {s.counselorName}</span>
-                  <Badge variant={s.status === 'completed' ? 'emerald' : 'blue'}>
-                    {s.status === 'completed' ? 'Selesai' : 'Dijadwalkan'}
-                  </Badge>
-                </div>
-                <p className="text-slate-600 mt-1">{s.problemSummary}</p>
-                {s.actionPlan && (
-                  <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
-                    <strong>Rencana Tindak Lanjut:</strong> {s.actionPlan}
+          {mySessions.length === 0 ? (
+            <div className="py-6 text-center space-y-2">
+              <p className="text-xs text-slate-500">Belum ada jadwal konseling yang diajukan.</p>
+              <button
+                type="button"
+                onClick={() => onNavigate('student_counseling')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg transition-colors"
+              >
+                <PlusCircle className="w-3.5 h-3.5" />
+                <span>Ajukan Jadwal Konseling</span>
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {mySessions.map((s) => (
+                <div key={s.id} className="p-3.5 rounded-lg border border-slate-200 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-slate-900">{s.ticketNumber} · {s.counselorName}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={s.status === 'completed' ? 'emerald' : 'blue'}>
+                        {s.status === 'completed' ? 'Selesai' : 'Dijadwalkan'}
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => onNavigate('student_counseling')}
+                        className="text-[11px] font-semibold text-blue-600 hover:text-blue-800"
+                      >
+                        Edit / Hapus
+                      </button>
+                    </div>
                   </div>
-                )}
-                <div className="mt-2 text-[11px] text-slate-400 font-mono">
-                  {s.sessionDate} pukul {s.sessionTime} WIB · {s.location}
+                  <p className="text-slate-600 mt-1">{s.problemSummary}</p>
+                  {s.actionPlan && (
+                    <div className="mt-2 p-2 rounded bg-slate-50 border border-slate-200 text-[11px] text-slate-700">
+                      <strong>Rencana Tindak Lanjut:</strong> {s.actionPlan}
+                    </div>
+                  )}
+                  <div className="mt-2 text-[11px] text-slate-400 font-mono">
+                    {s.sessionDate} pukul {s.sessionTime} WIB · {s.location}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Asesmen Aktif & Materi Terkini */}

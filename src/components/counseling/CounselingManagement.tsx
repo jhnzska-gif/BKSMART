@@ -18,10 +18,32 @@ interface CounselingManagementProps {
 
 export const CounselingManagement: React.FC<CounselingManagementProps> = ({ studentMode = false }) => {
   const { currentUser, role, canViewConfidentialNotes } = useAuth();
+  const students = APIService.getStudents();
+  const counselors = APIService.getTeachers().filter((t) => t.role === 'counselor');
+  const linkedStudent = currentUser
+    ? students.find(
+        (st) =>
+          (currentUser.nipOrNisn && st.nisn === currentUser.nipOrNisn) ||
+          st.name.toLowerCase() === currentUser.name.toLowerCase()
+      )
+    : undefined;
+
+  const isOwnSession = (s: CounselingSession) => {
+    if (!currentUser) return false;
+    return (
+      s.studentId === currentUser.id ||
+      (linkedStudent ? s.studentId === linkedStudent.id : false) ||
+      s.studentName.toLowerCase() === currentUser.name.toLowerCase()
+    );
+  };
+
   const [sessions, setSessions] = useState<CounselingSession[]>(() => {
     const list = APIService.getCounselingSessions();
-    if (studentMode && currentUser?.name) {
-      return list.filter(s => s.studentName.toLowerCase().includes(currentUser.name.toLowerCase()) || s.studentId === currentUser.id);
+    if (studentMode && currentUser) {
+      return list.filter((s) =>
+        s.studentId === currentUser.id ||
+        s.studentName.toLowerCase() === currentUser.name.toLowerCase()
+      );
     }
     return list;
   });
@@ -30,7 +52,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [domainFilter, setDomainFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Multi-delete state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -42,12 +64,10 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
   const [detailModalSession, setDetailModalSession] = useState<CounselingSession | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<CounselingSession | null>(null);
 
-  const students = APIService.getStudents();
-
   const handleRefresh = () => {
     const list = APIService.getCounselingSessions();
-    if (studentMode && currentUser?.name) {
-      setSessions(list.filter(s => s.studentName.toLowerCase().includes(currentUser.name.toLowerCase()) || s.studentId === currentUser.id));
+    if (studentMode && currentUser) {
+      setSessions(list.filter(isOwnSession));
     } else {
       setSessions(list);
     }
@@ -160,6 +180,9 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
   };
 
   const canEdit = role === 'counselor' || role === 'admin';
+  const canStudentModify = studentMode && role === 'student';
+  const canModifyRow = canEdit || canStudentModify;
+  const defaultCounselor = counselors[0];
 
   return (
     <div className="space-y-4">
@@ -175,7 +198,9 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
             </span>
           </div>
           <p className="text-xs text-slate-500">
-            Pencatatan sesi individual, kelompok, bimbingan klasikal · Dilengkapi multi-delete dan paginasi
+            {studentMode
+              ? 'Ajukan, ubah jadwal, atau batalkan/hapus pengajuan konseling Anda bersama Guru BK'
+              : 'Pencatatan sesi individual, kelompok, bimbingan klasikal · Dilengkapi multi-delete dan paginasi'}
           </p>
         </div>
 
@@ -184,26 +209,28 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
           onClick={() => {
             if (studentMode && currentUser) {
               setEditingSession({
-                studentId: currentUser.id,
+                studentId: linkedStudent?.id || currentUser.id,
                 studentName: currentUser.name,
-                studentClass: currentUser.assignedClass || 'XI RPL 1',
-                counselorId: 'u-2',
-                counselorName: 'Siti Rahmawati, S.Pd., Kons.',
+                studentClass: linkedStudent?.className || currentUser.assignedClass || '-',
+                counselorId: defaultCounselor?.id || 't-bk-1',
+                counselorName: defaultCounselor?.name || 'Dra. Cik Noni',
                 type: 'individual',
                 domain: 'karier',
                 sessionDate: new Date().toISOString().split('T')[0],
                 sessionTime: '10:00',
-                location: 'Ruang BK - Konseling Individu 1',
+                location: 'Ruang Konseling BK 1',
                 status: 'scheduled',
                 problemSummary: '',
               });
             } else {
               setEditingSession({
+                counselorId: defaultCounselor?.id || 't-bk-1',
+                counselorName: defaultCounselor?.name || 'Dra. Cik Noni',
                 type: 'individual',
                 domain: 'pribadi',
                 sessionDate: new Date().toISOString().split('T')[0],
                 sessionTime: '09:00',
-                location: 'Ruang BK - Konseling Individu 1',
+                location: 'Ruang Konseling BK 1',
                 status: 'scheduled',
               });
             }
@@ -295,7 +322,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
           <table className="w-full text-left text-xs">
             <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-semibold uppercase text-[11px]">
               <tr>
-                {canEdit && (
+                {canModifyRow && (
                   <th className="px-3 py-3 w-10 text-center">
                     <input
                       type="checkbox"
@@ -316,7 +343,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
             <tbody className="divide-y divide-slate-100">
               {paginatedSessions.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={canModifyRow ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
                     Tidak ada sesi konseling yang cocok.
                   </td>
                 </tr>
@@ -330,7 +357,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
                         isSelected ? 'bg-slate-50/90' : ''
                       }`}
                     >
-                      {canEdit && (
+                      {canModifyRow && (
                         <td className="px-3 py-3 text-center">
                           <input
                             type="checkbox"
@@ -397,7 +424,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
                             Detail
                           </button>
 
-                          {canEdit && (
+                          {canModifyRow && (
                             <>
                               <button
                                 type="button"
@@ -405,17 +432,19 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
                                   setEditingSession(session);
                                   setIsModalOpen(true);
                                 }}
-                                className="px-2.5 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 rounded border border-emerald-200 transition-colors"
                               >
-                                Catat Hasil
+                                <Edit2 className="w-3 h-3" />
+                                <span>{canEdit ? 'Catat Hasil' : 'Edit'}</span>
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setDeleteTarget(session)}
-                                className="p-1 text-slate-400 hover:text-rose-600 rounded"
+                                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded transition-colors"
                                 title="Hapus Sesi"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash2 className="w-3 h-3" />
+                                <span>Hapus</span>
                               </button>
                             </>
                           )}
@@ -535,8 +564,20 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingSession?.id ? `Catat Hasil Konseling: ${editingSession.ticketNumber}` : 'Jadwalkan Sesi Konseling Baru'}
-        description="Lengkapi informasi sesi bimbingan konseling dan rencana penanganan siswa."
+        title={
+          editingSession?.id
+            ? studentMode
+              ? `Ubah Jadwal Konseling: ${editingSession.ticketNumber}`
+              : `Catat Hasil Konseling: ${editingSession.ticketNumber}`
+            : studentMode
+              ? 'Ajukan Jadwal Konseling Baru'
+              : 'Jadwalkan Sesi Konseling Baru'
+        }
+        description={
+          studentMode
+            ? 'Pilih Guru BK, jadwal, dan sampaikan topik konseling yang ingin Anda bahas.'
+            : 'Lengkapi informasi sesi bimbingan konseling dan rencana penanganan siswa.'
+        }
         maxWidth="2xl"
       >
         <form onSubmit={handleSave} className="space-y-3.5 text-xs">
@@ -569,6 +610,32 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
             </div>
           )}
 
+          {counselors.length > 0 && (
+            <div>
+              <label className="block font-medium text-slate-700 mb-1">Guru BK (Konselor) *</label>
+              <select
+                value={editingSession?.counselorId || ''}
+                onChange={(e) => {
+                  const c = counselors.find(t => t.id === e.target.value);
+                  if (c) {
+                    setEditingSession({
+                      ...editingSession,
+                      counselorId: c.id,
+                      counselorName: c.name,
+                    });
+                  }
+                }}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+              >
+                {counselors.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block font-medium text-slate-700 mb-1">Bidang Bimbingan *</label>
@@ -593,13 +660,13 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
               >
                 <option value="individual">Konseling Individu</option>
                 <option value="group">Konseling Kelompok</option>
-                <option value="classical">Bimbingan Klasikal</option>
-                <option value="home_visit">Kunjungan Rumah (Home Visit)</option>
+                {!studentMode && <option value="classical">Bimbingan Klasikal</option>}
+                {!studentMode && <option value="home_visit">Kunjungan Rumah (Home Visit)</option>}
               </select>
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 ${studentMode ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-3`}>
             <div>
               <label className="block font-medium text-slate-700 mb-1">Tanggal Pertemuan</label>
               <input
@@ -619,26 +686,28 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
               />
             </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Status Sesi</label>
-              <select
-                value={editingSession?.status || 'scheduled'}
-                onChange={(e) => setEditingSession({ ...editingSession, status: e.target.value as CounselingStatus })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-              >
-                <option value="scheduled">Terjadwal</option>
-                <option value="in_progress">Sedang Berlangsung</option>
-                <option value="completed">Selesai</option>
-                <option value="follow_up">Perlu Tindak Lanjut</option>
-              </select>
-            </div>
+            {!studentMode && (
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Status Sesi</label>
+                <select
+                  value={editingSession?.status || 'scheduled'}
+                  onChange={(e) => setEditingSession({ ...editingSession, status: e.target.value as CounselingStatus })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                >
+                  <option value="scheduled">Terjadwal</option>
+                  <option value="in_progress">Sedang Berlangsung</option>
+                  <option value="completed">Selesai</option>
+                  <option value="follow_up">Perlu Tindak Lanjut</option>
+                </select>
+              </div>
+            )}
           </div>
 
           <div>
             <label className="block font-medium text-slate-700 mb-1">Lokasi Sesi</label>
             <input
               type="text"
-              value={editingSession?.location || 'Ruang BK - Konseling Individu 1'}
+              value={editingSession?.location || 'Ruang Konseling BK 1'}
               onChange={(e) => setEditingSession({ ...editingSession, location: e.target.value })}
               className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
             />
@@ -652,7 +721,7 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
               value={editingSession?.problemSummary || ''}
               onChange={(e) => setEditingSession({ ...editingSession, problemSummary: e.target.value })}
               className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900 leading-relaxed"
-              placeholder="Jelaskan pokok permasalahan..."
+              placeholder="Jelaskan topik atau permasalahan yang ingin dikonsultasikan..."
             />
           </div>
 
@@ -672,28 +741,30 @@ export const CounselingManagement: React.FC<CounselingManagementProps> = ({ stud
             </div>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Rencana Tindak Lanjut</label>
-              <textarea
-                rows={2}
-                value={editingSession?.actionPlan || ''}
-                onChange={(e) => setEditingSession({ ...editingSession, actionPlan: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-                placeholder="Langkah nyata yang disepakati..."
-              />
+          {!studentMode && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Rencana Tindak Lanjut</label>
+                <textarea
+                  rows={2}
+                  value={editingSession?.actionPlan || ''}
+                  onChange={(e) => setEditingSession({ ...editingSession, actionPlan: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  placeholder="Langkah nyata yang disepakati..."
+                />
+              </div>
+              <div>
+                <label className="block font-medium text-slate-700 mb-1">Hasil yang Dicapai</label>
+                <textarea
+                  rows={2}
+                  value={editingSession?.outcomeSummary || ''}
+                  onChange={(e) => setEditingSession({ ...editingSession, outcomeSummary: e.target.value })}
+                  className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+                  placeholder="Evaluasi ketercapaian..."
+                />
+              </div>
             </div>
-            <div>
-              <label className="block font-medium text-slate-700 mb-1">Hasil yang Dicapai</label>
-              <textarea
-                rows={2}
-                value={editingSession?.outcomeSummary || ''}
-                onChange={(e) => setEditingSession({ ...editingSession, outcomeSummary: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-                placeholder="Evaluasi ketercapaian..."
-              />
-            </div>
-          </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
             <button

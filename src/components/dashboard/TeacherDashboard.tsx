@@ -11,20 +11,26 @@ interface TeacherDashboardProps {
 
 export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }) => {
   const { currentUser } = useAuth();
-  const assignedClass = currentUser?.assignedClass || 'XI RPL 1';
+  const assignedClass = currentUser?.assignedClass || '';
+  const teacherName = currentUser?.name || 'Wali Kelas';
 
-  const students = APIService.getStudents().filter(s => s.className === assignedClass);
-  const myReferrals = APIService.getReferrals().filter(r => r.studentClass === assignedClass);
-  const materials = APIService.getMaterials().slice(0, 3);
+  const allStudents = APIService.getStudents();
+  const students = assignedClass ? allStudents.filter(s => s.className === assignedClass) : allStudents;
+  const allReferrals = APIService.getReferrals();
+  const myReferrals = assignedClass
+    ? allReferrals.filter(r => r.studentClass === assignedClass)
+    : allReferrals;
 
   return (
     <div className="space-y-6">
       {/* Banner */}
       <div className="bg-amber-950 text-white rounded-xl p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold tracking-tight">Portal Guru / Wali Kelas</h1>
-            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 font-mono font-medium">{assignedClass}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-xl font-bold tracking-tight">Halo, {teacherName}</h1>
+            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/30 text-amber-200 font-mono font-medium">
+              {assignedClass ? `Wali Kelas ${assignedClass}` : 'Guru'}
+            </span>
           </div>
           <p className="text-sm text-amber-100 mt-1 max-w-2xl">
             Pantau perkembangan peserta didik di kelas binaan Anda dan ajukan rujukan penanganan bimbingan konseling secara terstruktur.

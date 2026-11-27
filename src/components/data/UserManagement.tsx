@@ -7,14 +7,15 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
 import { BatchActionBar } from '../common/BatchActionBar';
-import { Search, Plus, Edit2, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, Eye, EyeOff, KeyRound, Filter } from 'lucide-react';
 
 export const UserManagement: React.FC = () => {
   const { currentUser, role } = useAuth();
   const [users, setUsers] = useState<User[]>(APIService.getUsers());
   const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Multi-delete state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -34,11 +35,14 @@ export const UserManagement: React.FC = () => {
   };
 
   const filteredUsers = users.filter((u) => {
-    return (
-      u.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      u.role.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const q = searchTerm.toLowerCase();
+    const matchesSearch =
+      u.name.toLowerCase().includes(q) ||
+      u.username.toLowerCase().includes(q) ||
+      u.role.toLowerCase().includes(q) ||
+      (u.assignedClass || '').toLowerCase().includes(q);
+    const matchesRole = roleFilter === 'all' || u.role === roleFilter;
+    return matchesSearch && matchesRole;
   });
 
   const paginatedUsers = filteredUsers.slice(
@@ -183,12 +187,12 @@ export const UserManagement: React.FC = () => {
         </button>
       </div>
 
-      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center">
-        <div className="relative flex-1">
+      <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row items-center gap-3">
+        <div className="relative flex-1 w-full">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Cari pengguna berdasarkan nama, username, atau role..."
+            placeholder="Cari pengguna berdasarkan nama, username, kelas, atau role..."
             value={searchTerm}
             onChange={(e) => {
               setSearchTerm(e.target.value);
@@ -196,6 +200,24 @@ export const UserManagement: React.FC = () => {
             }}
             className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
           />
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Filter className="w-3.5 h-3.5 text-slate-400" />
+          <select
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value);
+              setCurrentPage(1);
+            }}
+            className="px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
+          >
+            <option value="all">Semua Peran ({users.length})</option>
+            <option value="admin">Admin</option>
+            <option value="counselor">Guru BK</option>
+            <option value="teacher">Wali Kelas / Guru</option>
+            <option value="student">Siswa</option>
+            <option value="principal">Kepala Sekolah</option>
+          </select>
         </div>
       </div>
 
@@ -282,7 +304,21 @@ export const UserManagement: React.FC = () => {
                           <button
                             type="button"
                             onClick={() => {
+                              setEditingUser({ ...u, password: '' });
+                              setShowPassword(true);
+                              setIsModalOpen(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-medium text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded transition-colors"
+                            title="Ubah Data & Reset Kata Sandi"
+                          >
+                            <KeyRound className="w-3 h-3" />
+                            <span>Reset Sandi</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
                               setEditingUser(u);
+                              setShowPassword(false);
                               setIsModalOpen(true);
                             }}
                             className="p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded transition-colors"
@@ -315,7 +351,7 @@ export const UserManagement: React.FC = () => {
           itemsPerPage={itemsPerPage}
           onPageChange={setCurrentPage}
           onItemsPerPageChange={setItemsPerPage}
-          pageSizeOptions={[5, 10, 20]}
+          pageSizeOptions={[10, 20, 50]}
         />
       </div>
 

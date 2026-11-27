@@ -10,7 +10,7 @@ var INITIAL_USERS = [
   {
     id: "u-1",
     username: "admin",
-    name: "Administrator BKSmart",
+    name: "Kusnadi, S.Kom.",
     email: "admin@bksmart.sch.id",
     role: "admin",
     nipOrNisn: "",
@@ -19,10 +19,10 @@ var INITIAL_USERS = [
     createdAt: "2024-01-10T08:00:00Z"
   },
   {
-    id: "u-2",
-    username: "gurubk",
-    name: "Guru BK (Konselor)",
-    email: "gurubk@bksmart.sch.id",
+    id: "u-bk-2",
+    username: "anitri",
+    name: "Ani Tri Astuti, S.Pd.",
+    email: "anitri@bksmart.sch.id",
     role: "counselor",
     nipOrNisn: "",
     phone: "",
@@ -30,36 +30,23 @@ var INITIAL_USERS = [
     createdAt: "2024-01-10T08:05:00Z"
   },
   {
-    id: "u-3",
-    username: "walikelas",
-    name: "Guru / Wali Kelas",
-    email: "walikelas@bksmart.sch.id",
-    role: "teacher",
+    id: "u-bk-1",
+    username: "ciknoni",
+    name: "Dra. Cik Noni",
+    email: "ciknoni@bksmart.sch.id",
+    role: "counselor",
     nipOrNisn: "",
     phone: "",
-    assignedClass: "",
     active: true,
-    createdAt: "2024-01-10T08:10:00Z"
-  },
-  {
-    id: "u-4",
-    username: "siswa",
-    name: "Akun Siswa",
-    email: "siswa@bksmart.sch.id",
-    role: "student",
-    nipOrNisn: "",
-    phone: "",
-    assignedClass: "",
-    active: true,
-    createdAt: "2024-01-10T08:15:00Z"
+    createdAt: "2024-01-10T08:06:00Z"
   },
   {
     id: "u-5",
     username: "kepsek",
-    name: "Kepala Sekolah",
-    email: "kepsek@bksmart.sch.id",
+    name: "Osda Ida Perida Manurung, M.Pd.",
+    email: "osda.manurung@sekolah.sch.id",
     role: "principal",
-    nipOrNisn: "",
+    nipOrNisn: "198001012008012001",
     phone: "",
     active: true,
     createdAt: "2024-01-10T08:20:00Z"
