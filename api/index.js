@@ -867,6 +867,17 @@ var BKSmartRepository = class {
       throw new Error("Gagal menyimpan data pengguna.", { cause: error });
     }
   }
+  static async importUsers(users) {
+    if (users.length === 0) return;
+    try {
+      for (const u of users) {
+        await this.saveUser(u);
+      }
+    } catch (error) {
+      console.error("importUsers failed:", error);
+      throw new Error("Gagal mengimpor akun pengguna.", { cause: error });
+    }
+  }
   static async deleteUsers(ids) {
     if (ids.length === 0) return;
     try {
@@ -1017,6 +1028,17 @@ var BKSmartRepository = class {
     } catch (error) {
       console.error("saveTeacher failed:", error);
       throw new Error("Gagal menyimpan data guru.", { cause: error });
+    }
+  }
+  static async importTeachers(teachers) {
+    if (teachers.length === 0) return;
+    try {
+      for (const t of teachers) {
+        await this.saveTeacher(t);
+      }
+    } catch (error) {
+      console.error("importTeachers failed:", error);
+      throw new Error("Gagal mengimpor data guru.", { cause: error });
     }
   }
   static async deleteTeachers(ids) {
@@ -1191,6 +1213,39 @@ var BKSmartRepository = class {
     } catch (error) {
       console.error("deleteAcademicYears failed:", error);
       throw new Error("Gagal menghapus data tahun ajaran.", { cause: error });
+    }
+  }
+  static async importAcademic(payload) {
+    const counts = { academicYears: 0, majors: 0, classes: 0 };
+    try {
+      if (Array.isArray(payload.academicYears)) {
+        for (const ay of payload.academicYears) {
+          if (ay?.year) {
+            await this.saveAcademicYear(ay);
+            counts.academicYears++;
+          }
+        }
+      }
+      if (Array.isArray(payload.majors)) {
+        for (const m of payload.majors) {
+          if (m?.name) {
+            await this.saveMajor(m);
+            counts.majors++;
+          }
+        }
+      }
+      if (Array.isArray(payload.classes)) {
+        for (const c of payload.classes) {
+          if (c?.name) {
+            await this.saveClass(c);
+            counts.classes++;
+          }
+        }
+      }
+      return counts;
+    } catch (error) {
+      console.error("importAcademic failed:", error);
+      throw new Error("Gagal mengimpor data akademik sekolah.", { cause: error });
     }
   }
   // COUNSELING SESSIONS
@@ -1692,6 +1747,15 @@ function createApiApp() {
       res.status(500).json({ error: error instanceof Error ? error.message : "Gagal menyimpan pengguna" });
     }
   });
+  app2.post("/api/users/import", async (req, res) => {
+    try {
+      const users = Array.isArray(req.body?.users) ? req.body.users : [];
+      await BKSmartRepository.importUsers(users);
+      res.json({ ok: true, count: users.length });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Gagal mengimpor akun pengguna" });
+    }
+  });
   app2.delete("/api/users/:id", async (req, res) => {
     try {
       await BKSmartRepository.deleteUsers([req.params.id]);
@@ -1749,6 +1813,15 @@ function createApiApp() {
       res.json(saved);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Gagal menyimpan guru" });
+    }
+  });
+  app2.post("/api/teachers/import", async (req, res) => {
+    try {
+      const teachers = Array.isArray(req.body?.teachers) ? req.body.teachers : [];
+      await BKSmartRepository.importTeachers(teachers);
+      res.json({ ok: true, count: teachers.length });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Gagal mengimpor guru" });
     }
   });
   app2.delete("/api/teachers/:id", async (req, res) => {
@@ -1823,6 +1896,18 @@ function createApiApp() {
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Gagal menghapus tahun ajaran" });
+    }
+  });
+  app2.post("/api/academic/import", async (req, res) => {
+    try {
+      const counts = await BKSmartRepository.importAcademic({
+        academicYears: Array.isArray(req.body?.academicYears) ? req.body.academicYears : [],
+        majors: Array.isArray(req.body?.majors) ? req.body.majors : [],
+        classes: Array.isArray(req.body?.classes) ? req.body.classes : []
+      });
+      res.json({ ok: true, counts });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Gagal mengimpor data akademik" });
     }
   });
   app2.post("/api/counseling-sessions", async (req, res) => {

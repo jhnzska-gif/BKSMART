@@ -864,114 +864,714 @@ export class APIService {
     return [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
   }
 
-  static getStudentCSVTemplate(): string {
+  private static parseDelimitedRows(rawText: string): string[][] {
+    let cleaned = rawText.replace(/^\uFEFF/, '').trim();
+    if (/^sep=[,;|\t]\s*(\r?\n|$)/i.test(cleaned)) {
+      cleaned = cleaned.replace(/^sep=[,;|\t]\s*\r?\n?/i, '').trim();
+    }
+    if (!cleaned) return [];
+    const firstBreak = cleaned.search(/\r?\n/);
+    const headerLine = firstBreak === -1 ? cleaned : cleaned.slice(0, firstBreak);
+
+    const countChar = (line: string, ch: string) => {
+      let inQuotes = false;
+      let count = 0;
+      for (let i = 0; i < line.length; i++) {
+        if (line[i] === '"') inQuotes = !inQuotes;
+        else if (!inQuotes && line[i] === ch) count++;
+      }
+      return count;
+    };
+
+    const tabCount = countChar(headerLine, '\t');
+    const semiCount = countChar(headerLine, ';');
+    const commaCount = countChar(headerLine, ',');
+    const delimiter =
+      tabCount > 0 && tabCount >= semiCount && tabCount >= commaCount
+        ? '\t'
+        : semiCount > commaCount
+          ? ';'
+          : ',';
+
+    const rows: string[][] = [];
+    let currentRow: string[] = [];
+    let currentVal = '';
+    let inQuotes = false;
+
+    for (let i = 0; i < cleaned.length; i++) {
+      const ch = cleaned[i];
+      const next = cleaned[i + 1];
+      if (ch === '"') {
+        if (inQuotes && next === '"') {
+          currentVal += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (!inQuotes && ch === delimiter) {
+        currentRow.push(currentVal.trim());
+        currentVal = '';
+      } else if (!inQuotes && (ch === '\n' || ch === '\r')) {
+        if (ch === '\r' && next === '\n') i++;
+        currentRow.push(currentVal.trim());
+        if (currentRow.some((cell) => cell.length > 0)) {
+          rows.push(currentRow);
+        }
+        currentRow = [];
+        currentVal = '';
+      } else {
+        currentVal += ch;
+      }
+    }
+    currentRow.push(currentVal.trim());
+    if (currentRow.some((cell) => cell.length > 0)) {
+      rows.push(currentRow);
+    }
+    return rows;
+  }
+
+  private static deriveMajorCode(majorName: string): string {
+    const trimmed = majorName.trim();
+    if (!trimmed || trimmed === '-') return 'UMUM';
+    const words = trimmed
+      .split(/[\s/&,-]+/)
+      .filter((w) => w.length > 0 && !['dan', 'atau', 'keahlian'].includes(w.toLowerCase()));
+    if (words.length === 1) {
+      return words[0].slice(0, 6).toUpperCase();
+    }
+    return words
+      .map((w) => w[0])
+      .join('')
+      .slice(0, 6)
+      .toUpperCase();
+  }
+
+  private static inferGradeLevel(className: string): '10' | '11' | '12' {
+    const upper = className.trim().toUpperCase();
+    if (/^(XII|12)\b/.test(upper)) return '12';
+    if (/^(XI|11)\b/.test(upper)) return '11';
+    return '10';
+  }
+
+  static getStudentTemplateRows(): string[][] {
+    return [
+      [
+        'NISN',
+        'NIS',
+        'Nama Lengkap',
+        'Jenis Kelamin (L/P)',
+        'Kelas',
+        'Jurusan',
+        'Tahun Ajaran',
+        'Nama Orang Tua',
+        'No HP Ortu',
+        'No HP Siswa',
+      ],
+      [
+        '0081234567',
+        '2425001',
+        'Nama Siswa',
+        'L',
+        'X RPL 1',
+        'Rekayasa Perangkat Lunak',
+        defaultAcademicYear(),
+        'Nama Wali',
+        '0812-3456-7890',
+        '0813-9988-7766',
+      ],
+    ];
+  }
+
+  static getTeacherTemplateRows(): string[][] {
+    return [
+      [
+        'NIP',
+        'Nama Lengkap',
+        'Jenis Kelamin (L/P)',
+        'Peran (counselor/teacher)',
+        'Spesialisasi / Kelas Binaan',
+        'Email',
+        'No HP',
+        'Username',
+        'Kata Sandi',
+      ],
+      [
+        '198501012010012001',
+        'Nama Guru BK / Wali Kelas',
+        'P',
+        'counselor',
+        'Konseling Karier & Pribadi',
+        'guru@sekolah.sch.id',
+        '0812-3456-7890',
+        'gurubk_1',
+        'bk12345',
+      ],
+    ];
+  }
+
+  static getAcademicTemplateRows(): string[][] {
+    return [
+      [
+        'Tahun Ajaran',
+        'Semester (Ganjil/Genap)',
+        'Aktif (YA/TIDAK)',
+        'Kode Jurusan',
+        'Nama Jurusan',
+        'Kepala Jurusan',
+        'Nama Kelas',
+        'Tingkat (10/11/12)',
+        'Wali Kelas',
+      ],
+      [
+        defaultAcademicYear(),
+        'Ganjil',
+        'YA',
+        'RPL',
+        'Rekayasa Perangkat Lunak',
+        'Nama Kaprog',
+        'X RPL 1',
+        '10',
+        'Nama Wali Kelas',
+      ],
+    ];
+  }
+
+  static getExportStudentRows(): string[][] {
+    const students = this.getStudents();
     const headers = [
       'NISN',
       'NIS',
       'Nama Lengkap',
-      'Jenis Kelamin (L/P)',
+      'Jenis Kelamin',
       'Kelas',
       'Jurusan',
       'Tahun Ajaran',
       'Nama Orang Tua',
       'No HP Ortu',
       'No HP Siswa',
+      'Status',
     ];
-    const sample = [
-      '0081234567',
-      '2425001',
-      'Nama Siswa',
-      'L',
-      'X RPL 1',
-      'Rekayasa Perangkat Lunak',
-      defaultAcademicYear(),
-      'Nama Wali',
-      '0812-3456-7890',
-      '0813-9988-7766',
-    ];
-    return [headers.join(','), sample.join(',')].join('\n');
+    const rows = students.map((s) => [
+      s.nisn,
+      s.nis,
+      s.name,
+      s.gender,
+      s.className,
+      s.majorName,
+      s.academicYear,
+      s.parentName,
+      s.parentPhone,
+      s.studentPhone,
+      s.status,
+    ]);
+    return [headers, ...rows];
   }
 
-  static async importStudentsFromCSV(
+  static getStudentCSVTemplate(): string {
+    const [headers, sample] = this.getStudentTemplateRows();
+    return ['sep=,', headers.join(','), sample.join(',')].join('\n');
+  }
+
+  static getTeacherCSVTemplate(): string {
+    const [headers, sample] = this.getTeacherTemplateRows();
+    return ['sep=,', headers.join(','), sample.join(',')].join('\n');
+  }
+
+  static getAcademicCSVTemplate(): string {
+    const [headers, sample] = this.getAcademicTemplateRows();
+    return ['sep=,', headers.join(','), sample.join(',')].join('\n');
+  }
+
+  static async importAcademicFromCSV(csvText: string): Promise<{
+    academicYearsCreated: number;
+    majorsCreated: number;
+    classesCreated: number;
+    errors: string[];
+  }> {
+    const rows = this.parseDelimitedRows(csvText);
+    if (rows.length < 2) {
+      return {
+        academicYearsCreated: 0,
+        majorsCreated: 0,
+        classesCreated: 0,
+        errors: ['Data CSV/Excel kosong atau tidak memiliki baris data di bawah judul kolom.'],
+      };
+    }
+
+    const errors: string[] = [];
+    const newYears: AcademicYear[] = [];
+    const newMajors: Major[] = [];
+    const newClasses: SchoolClass[] = [];
+
+    const yearMap = new Map<string, AcademicYear>(
+      store.academicYears.map((y) => [`${y.year.trim()}|${y.semester}`, y])
+    );
+    const majorByName = new Map<string, Major>(
+      store.majors.map((m) => [m.name.trim().toLowerCase(), m])
+    );
+    const majorByCode = new Map<string, Major>(
+      store.majors.map((m) => [m.code.trim().toUpperCase(), m])
+    );
+    const classByName = new Map<string, SchoolClass>(
+      store.classes.map((c) => [c.name.trim().toLowerCase(), c])
+    );
+    const teacherByName = new Map<string, Teacher>(
+      store.teachers.map((t) => [t.name.trim().toLowerCase(), t])
+    );
+
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      if (cols.length < 4) {
+        errors.push(`Baris ${i + 1}: Minimal memiliki Tahun Ajaran, Semester, Aktif, dan Jurusan/Kelas.`);
+        continue;
+      }
+      const [
+        yearRaw,
+        semesterRaw,
+        activeRaw,
+        majorCodeRaw,
+        majorNameRaw,
+        headOfMajorRaw,
+        classNameRaw,
+        gradeRaw,
+        homeroomRaw,
+      ] = cols;
+
+      const year = (yearRaw || defaultAcademicYear()).trim();
+      const semester: 'Ganjil' | 'Genap' =
+        semesterRaw?.trim().toLowerCase() === 'genap' ? 'Genap' : 'Ganjil';
+      const isActive = ['ya', 'yes', 'true', '1', 'aktif'].includes(
+        (activeRaw || '').trim().toLowerCase()
+      );
+      const yearKey = `${year}|${semester}`;
+
+      if (year && !yearMap.has(yearKey)) {
+        const ay: AcademicYear = {
+          id: makeId(`ay-${i}`),
+          year,
+          semester,
+          isActive: isActive || (yearMap.size === 0 && newYears.length === 0),
+        };
+        yearMap.set(yearKey, ay);
+        newYears.push(ay);
+      }
+
+      let linkedMajor: Major | undefined;
+      const majorName = (majorNameRaw || '').trim();
+      const majorCode = (majorCodeRaw || (majorName ? this.deriveMajorCode(majorName) : '')).trim().toUpperCase();
+      if (majorName || majorCode) {
+        linkedMajor =
+          (majorName ? majorByName.get(majorName.toLowerCase()) : undefined) ||
+          (majorCode ? majorByCode.get(majorCode) : undefined);
+        if (!linkedMajor) {
+          const major: Major = {
+            id: makeId(`m-${i}`),
+            code: majorCode || this.deriveMajorCode(majorName),
+            name: majorName || majorCode,
+            headOfMajor: headOfMajorRaw?.trim() || undefined,
+          };
+          majorByName.set(major.name.toLowerCase(), major);
+          majorByCode.set(major.code, major);
+          newMajors.push(major);
+          linkedMajor = major;
+        }
+      }
+
+      const className = (classNameRaw || '').trim();
+      if (className) {
+        const classKey = className.toLowerCase();
+        const existingClass = classByName.get(classKey);
+        const normalizedGrade: '10' | '11' | '12' =
+          gradeRaw?.trim() === '12' || gradeRaw?.trim().toUpperCase() === 'XII'
+            ? '12'
+            : gradeRaw?.trim() === '11' || gradeRaw?.trim().toUpperCase() === 'XI'
+              ? '11'
+              : gradeRaw?.trim() === '10' || gradeRaw?.trim().toUpperCase() === 'X'
+                ? '10'
+                : this.inferGradeLevel(className);
+        const homeroomName = homeroomRaw?.trim() || undefined;
+        const matchedTeacher = homeroomName
+          ? teacherByName.get(homeroomName.toLowerCase())
+          : undefined;
+
+        const cls: SchoolClass = {
+          id: existingClass?.id || makeId(`c-${i}`),
+          name: className,
+          grade: normalizedGrade,
+          majorId: linkedMajor?.id || existingClass?.majorId || '',
+          majorName: linkedMajor?.name || majorName || existingClass?.majorName || '-',
+          homeroomTeacherId: matchedTeacher?.id || existingClass?.homeroomTeacherId,
+          homeroomTeacherName: homeroomName || existingClass?.homeroomTeacherName,
+          studentCount: existingClass?.studentCount || 0,
+          academicYear: year,
+        };
+        classByName.set(classKey, cls);
+        newClasses.push(cls);
+      }
+    }
+
+    if (newYears.length > 0 || newMajors.length > 0 || newClasses.length > 0) {
+      await this.persistAsync('/api/academic/import', 'POST', {
+        academicYears: newYears,
+        majors: newMajors,
+        classes: newClasses,
+      });
+      await this.syncFromServer(activeRole);
+    }
+
+    return {
+      academicYearsCreated: newYears.length,
+      majorsCreated: newMajors.length,
+      classesCreated: newClasses.length,
+      errors,
+    };
+  }
+
+  static async importTeachersFromCSV(
     csvText: string,
     options?: { createUserAccounts?: boolean; defaultPassword?: string }
-  ): Promise<{ importedCount: number; accountsCreated: number; errors: string[] }> {
-    const lines = csvText.trim().split(/\r?\n/);
-    if (lines.length < 2) {
+  ): Promise<{ importedCount: number; accountsCreated: number; classesCreated: number; errors: string[] }> {
+    const rows = this.parseDelimitedRows(csvText);
+    if (rows.length < 2) {
       return {
         importedCount: 0,
         accountsCreated: 0,
-        errors: ['File CSV kosong atau tidak memiliki baris data.'],
+        classesCreated: 0,
+        errors: ['Data CSV/Excel kosong atau tidak memiliki baris data di bawah judul kolom.'],
       };
     }
-    const importedStudents: Student[] = [];
-    const errors: string[] = [];
 
-    for (let i = 1; i < lines.length; i++) {
-      const line = lines[i].trim();
-      if (!line) continue;
-      const cols = line.split(',').map((c) => c.replace(/^"|"$/g, '').trim());
-      if (cols.length < 3) {
-        errors.push(`Baris ${i + 1}: Format kolom tidak sesuai.`);
+    const errors: string[] = [];
+    const importedTeachers: Teacher[] = [];
+    const usersToCreate: Array<User & { password?: string }> = [];
+    const newClasses: SchoolClass[] = [];
+
+    const existingTeacherByNip = new Map<string, Teacher>(
+      store.teachers.filter((t) => t.nip).map((t) => [t.nip.trim(), t])
+    );
+    const existingClassByName = new Map<string, SchoolClass>(
+      store.classes.map((c) => [c.name.trim().toLowerCase(), c])
+    );
+    const existingUsernames = new Set(store.users.map((u) => u.username.toLowerCase()));
+
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      if (cols.length < 2) {
+        errors.push(`Baris ${i + 1}: Format kolom guru tidak lengkap.`);
         continue;
       }
-      const [nisn, nis, name, gender, className, majorName, academicYear, parentName, parentPhone, studentPhone] = cols;
-      const newS: Student = {
-        id: makeId(`s-${i}`),
-        nisn: nisn || '00' + Math.floor(10000000 + Math.random() * 90000000),
-        nis: nis || '24' + Math.floor(10000 + Math.random() * 90000),
-        name: name || 'Siswa Import ' + i,
-        gender: gender?.toUpperCase() === 'P' ? 'P' : 'L',
-        classId: '',
-        className: className || '-',
-        majorId: '',
-        majorName: majorName || '-',
-        academicYear: academicYear || defaultAcademicYear(),
-        parentName: parentName || '-',
-        parentPhone: parentPhone || '-',
-        studentPhone: studentPhone || '-',
-        address: '-',
-        status: 'active',
-        counselingCount: 0,
-        openCasesCount: 0,
-      };
-      importedStudents.push(newS);
-    }
+      const [
+        nipRaw,
+        nameRaw,
+        genderRaw,
+        roleRaw,
+        specOrClassRaw,
+        emailRaw,
+        phoneRaw,
+        usernameRaw,
+        passwordRaw,
+      ] = cols;
 
-    let accountsCreated = 0;
-    if (importedStudents.length > 0) {
-      await this.persistAsync('/api/students/import', 'POST', { students: importedStudents });
-      store.students = [...importedStudents, ...store.students];
+      const name = (nameRaw || '').trim();
+      if (!name) {
+        errors.push(`Baris ${i + 1}: Nama guru wajib diisi.`);
+        continue;
+      }
+      const nip = (nipRaw || '').trim();
+      const roleVal = (roleRaw || '').trim().toLowerCase();
+      const teacherRole: 'counselor' | 'teacher' =
+        roleVal.includes('counselor') || roleVal.includes('bk') || roleVal.includes('konselor')
+          ? 'counselor'
+          : 'teacher';
+      const specOrClass = (specOrClassRaw || '').trim();
+      const existing = nip ? existingTeacherByNip.get(nip) : undefined;
+
+      const teacher: Teacher = {
+        id: existing?.id || makeId(`t-${i}`),
+        nip: nip || '199' + Math.floor(100000000000 + Math.random() * 900000000000),
+        name,
+        gender: genderRaw?.trim().toUpperCase() === 'P' ? 'P' : 'L',
+        email: (emailRaw || '').trim(),
+        phone: (phoneRaw || '').trim(),
+        role: teacherRole,
+        specialization: teacherRole === 'counselor' ? specOrClass || 'Umum' : undefined,
+        assignedClass: teacherRole === 'teacher' ? specOrClass || undefined : undefined,
+      };
+      importedTeachers.push(teacher);
+      if (nip) existingTeacherByNip.set(nip, teacher);
+
+      if (teacherRole === 'teacher' && specOrClass) {
+        const clsKey = specOrClass.toLowerCase();
+        if (!existingClassByName.has(clsKey)) {
+          const autoCls: SchoolClass = {
+            id: makeId(`c-t${i}`),
+            name: specOrClass,
+            grade: this.inferGradeLevel(specOrClass),
+            majorId: '',
+            majorName: '-',
+            homeroomTeacherId: teacher.id,
+            homeroomTeacherName: teacher.name,
+            studentCount: 0,
+            academicYear: defaultAcademicYear(),
+          };
+          existingClassByName.set(clsKey, autoCls);
+          newClasses.push(autoCls);
+        }
+      }
 
       if (options?.createUserAccounts) {
-        const existingUsernames = new Set(store.users.map((u) => u.username.toLowerCase()));
-        for (const s of importedStudents) {
-          const baseUsername = (s.nisn || s.nis || s.name.toLowerCase().replace(/[^a-z0-9]/g, ''))
-            .toLowerCase()
-            .replace(/\s+/g, '');
-          if (!baseUsername || existingUsernames.has(baseUsername)) continue;
-          try {
-            const password = options.defaultPassword?.trim() || s.nis || 'siswa123';
-            await this.saveUser({
-              username: baseUsername,
-              password,
-              name: s.name,
-              role: 'student',
-              nipOrNisn: s.nisn,
-              phone: s.studentPhone !== '-' ? s.studentPhone : '',
-              assignedClass: s.className !== '-' ? s.className : undefined,
-              active: true,
-            });
-            existingUsernames.add(baseUsername);
-            accountsCreated++;
-          } catch (err) {
-            errors.push(`Akun untuk ${s.name} (@${baseUsername}) gagal dibuat: ${err instanceof Error ? err.message : 'error'}`);
-          }
+        const rawUsername =
+          (usernameRaw || '').trim() ||
+          (nip ? nip.replace(/\s+/g, '') : name.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 18));
+        const cleanUsername = rawUsername.toLowerCase().replace(/\s+/g, '');
+        if (cleanUsername && !existingUsernames.has(cleanUsername)) {
+          const password =
+            (passwordRaw || '').trim() ||
+            options.defaultPassword?.trim() ||
+            (nip ? nip.slice(-6) : 'guru123');
+          usersToCreate.push({
+            id: makeId(`u-t${i}`),
+            username: cleanUsername,
+            password,
+            name: teacher.name,
+            email: teacher.email,
+            role: teacher.role,
+            nipOrNisn: teacher.nip,
+            phone: teacher.phone,
+            assignedClass: teacher.role === 'teacher' ? teacher.assignedClass : undefined,
+            active: true,
+            createdAt: new Date().toISOString(),
+          });
+          existingUsernames.add(cleanUsername);
         }
       }
     }
 
-    return { importedCount: importedStudents.length, accountsCreated, errors };
+    if (newClasses.length > 0) {
+      await this.persistAsync('/api/academic/import', 'POST', { classes: newClasses });
+    }
+    if (importedTeachers.length > 0) {
+      await this.persistAsync('/api/teachers/import', 'POST', { teachers: importedTeachers });
+    }
+    if (usersToCreate.length > 0) {
+      await this.persistAsync('/api/users/import', 'POST', { users: usersToCreate });
+    }
+    if (importedTeachers.length > 0 || newClasses.length > 0 || usersToCreate.length > 0) {
+      await this.syncFromServer(activeRole);
+    }
+
+    return {
+      importedCount: importedTeachers.length,
+      accountsCreated: usersToCreate.length,
+      classesCreated: newClasses.length,
+      errors,
+    };
+  }
+
+  static async importStudentsFromCSV(
+    csvText: string,
+    options?: {
+      createUserAccounts?: boolean;
+      defaultPassword?: string;
+      autoCreateClassesAndMajors?: boolean;
+    }
+  ): Promise<{
+    importedCount: number;
+    accountsCreated: number;
+    classesCreated: number;
+    majorsCreated: number;
+    errors: string[];
+  }> {
+    const rows = this.parseDelimitedRows(csvText);
+    if (rows.length < 2) {
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        classesCreated: 0,
+        majorsCreated: 0,
+        errors: ['File CSV kosong atau tidak memiliki baris data di bawah judul kolom.'],
+      };
+    }
+
+    const autoCreateAcademic = options?.autoCreateClassesAndMajors !== false;
+    const importedStudents: Student[] = [];
+    const errors: string[] = [];
+
+    const existingStudentByNisn = new Map<string, Student>(
+      store.students.filter((s) => s.nisn).map((s) => [s.nisn.trim(), s])
+    );
+    const yearMap = new Map<string, AcademicYear>(
+      store.academicYears.map((y) => [`${y.year.trim()}|${y.semester}`, y])
+    );
+    const majorByName = new Map<string, Major>(
+      store.majors.map((m) => [m.name.trim().toLowerCase(), m])
+    );
+    const classByName = new Map<string, SchoolClass>(
+      store.classes.map((c) => [c.name.trim().toLowerCase(), c])
+    );
+
+    const newYears: AcademicYear[] = [];
+    const newMajors: Major[] = [];
+    const touchedClasses = new Map<string, SchoolClass>();
+    let classesCreated = 0;
+
+    for (let i = 1; i < rows.length; i++) {
+      const cols = rows[i];
+      if (cols.length < 3) {
+        errors.push(`Baris ${i + 1}: Format kolom tidak lengkap (minimal NISN, NIS, Nama).`);
+        continue;
+      }
+      const [
+        nisnRaw,
+        nisRaw,
+        nameRaw,
+        genderRaw,
+        classNameRaw,
+        majorNameRaw,
+        academicYearRaw,
+        parentNameRaw,
+        parentPhoneRaw,
+        studentPhoneRaw,
+      ] = cols;
+
+      const name = (nameRaw || '').trim();
+      if (!name) {
+        errors.push(`Baris ${i + 1}: Nama siswa kosong.`);
+        continue;
+      }
+      const nisn = (nisnRaw || '').trim();
+      const nis = (nisRaw || '').trim();
+      const className = (classNameRaw || '-').trim() || '-';
+      const majorName = (majorNameRaw || '-').trim() || '-';
+      const academicYear = (academicYearRaw || defaultAcademicYear()).trim();
+
+      let linkedMajor = majorName !== '-' ? majorByName.get(majorName.toLowerCase()) : undefined;
+      let linkedClass = className !== '-' ? classByName.get(className.toLowerCase()) : undefined;
+
+      if (autoCreateAcademic) {
+        const yearKey = `${academicYear}|Ganjil`;
+        const hasAnyYearForString = Array.from(yearMap.values()).some(
+          (y) => y.year.trim() === academicYear
+        );
+        if (academicYear && !hasAnyYearForString && !yearMap.has(yearKey)) {
+          const ay: AcademicYear = {
+            id: makeId(`ay-s${i}`),
+            year: academicYear,
+            semester: 'Ganjil',
+            isActive: yearMap.size === 0 && newYears.length === 0,
+          };
+          yearMap.set(yearKey, ay);
+          newYears.push(ay);
+        }
+
+        if (majorName !== '-' && !linkedMajor) {
+          const createdMajor: Major = {
+            id: makeId(`m-s${i}`),
+            code: this.deriveMajorCode(majorName),
+            name: majorName,
+          };
+          majorByName.set(majorName.toLowerCase(), createdMajor);
+          newMajors.push(createdMajor);
+          linkedMajor = createdMajor;
+        }
+
+        if (className !== '-' && !linkedClass) {
+          const createdClass: SchoolClass = {
+            id: makeId(`c-s${i}`),
+            name: className,
+            grade: this.inferGradeLevel(className),
+            majorId: linkedMajor?.id || '',
+            majorName: linkedMajor?.name || majorName,
+            studentCount: 0,
+            academicYear,
+          };
+          classByName.set(className.toLowerCase(), createdClass);
+          touchedClasses.set(createdClass.id, createdClass);
+          linkedClass = createdClass;
+          classesCreated++;
+        }
+      }
+
+      const existing = nisn ? existingStudentByNisn.get(nisn) : undefined;
+      const newS: Student = {
+        id: existing?.id || makeId(`s-${i}`),
+        nisn: nisn || '00' + Math.floor(10000000 + Math.random() * 90000000),
+        nis: nis || '24' + Math.floor(10000 + Math.random() * 90000),
+        name,
+        gender: genderRaw?.trim().toUpperCase() === 'P' ? 'P' : 'L',
+        classId: linkedClass?.id || existing?.classId || '',
+        className,
+        majorId: linkedMajor?.id || existing?.majorId || '',
+        majorName,
+        academicYear,
+        parentName: parentNameRaw?.trim() || '-',
+        parentPhone: parentPhoneRaw?.trim() || '-',
+        studentPhone: studentPhoneRaw?.trim() || '-',
+        address: existing?.address || '-',
+        status: existing?.status || 'active',
+        counselingCount: existing?.counselingCount ?? 0,
+        openCasesCount: existing?.openCasesCount ?? 0,
+      };
+      importedStudents.push(newS);
+      if (nisn) existingStudentByNisn.set(nisn, newS);
+
+      if (linkedClass && !existing) {
+        linkedClass.studentCount = (linkedClass.studentCount || 0) + 1;
+        touchedClasses.set(linkedClass.id, linkedClass);
+      }
+    }
+
+    const usersToCreate: Array<User & { password?: string }> = [];
+    if (importedStudents.length > 0) {
+      if (newYears.length > 0 || newMajors.length > 0 || touchedClasses.size > 0) {
+        await this.persistAsync('/api/academic/import', 'POST', {
+          academicYears: newYears,
+          majors: newMajors,
+          classes: Array.from(touchedClasses.values()),
+        });
+      }
+
+      await this.persistAsync('/api/students/import', 'POST', { students: importedStudents });
+
+      if (options?.createUserAccounts) {
+        const existingUsernames = new Set(store.users.map((u) => u.username.toLowerCase()));
+        for (let i = 0; i < importedStudents.length; i++) {
+          const s = importedStudents[i];
+          const baseUsername = (s.nisn || s.nis || s.name.toLowerCase().replace(/[^a-z0-9]/g, ''))
+            .toLowerCase()
+            .replace(/\s+/g, '');
+          if (!baseUsername || existingUsernames.has(baseUsername)) continue;
+          const password = options.defaultPassword?.trim() || s.nis || 'siswa123';
+          usersToCreate.push({
+            id: makeId(`u-s${i}`),
+            username: baseUsername,
+            password,
+            name: s.name,
+            email: '',
+            role: 'student',
+            nipOrNisn: s.nisn,
+            phone: s.studentPhone !== '-' ? s.studentPhone : '',
+            assignedClass: s.className !== '-' ? s.className : undefined,
+            active: true,
+            createdAt: new Date().toISOString(),
+          });
+          existingUsernames.add(baseUsername);
+        }
+        if (usersToCreate.length > 0) {
+          await this.persistAsync('/api/users/import', 'POST', { users: usersToCreate });
+        }
+      }
+
+      await this.syncFromServer(activeRole);
+    }
+
+    return {
+      importedCount: importedStudents.length,
+      accountsCreated: usersToCreate.length,
+      classesCreated,
+      majorsCreated: newMajors.length,
+      errors,
+    };
   }
 
   static async createFullBackup(): Promise<{

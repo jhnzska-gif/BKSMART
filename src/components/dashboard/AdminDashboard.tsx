@@ -1,13 +1,14 @@
 import React from 'react';
 import { APIService } from '../../services/api';
 import { StatCard } from '../common/StatCard';
-import { Users, GraduationCap, School, ShieldCheck, Database, Server, Clock, PlusCircle } from 'lucide-react';
+import { Users, GraduationCap, School, ShieldCheck, Database, Clock, FileSpreadsheet } from 'lucide-react';
 
 interface AdminDashboardProps {
   onNavigate: (tabId: string) => void;
+  onOpenImport?: (tab?: 'academic' | 'teachers' | 'students') => void;
 }
 
-export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) => {
+export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onOpenImport }) => {
   const users = APIService.getUsers();
   const students = APIService.getStudents();
   const teachers = APIService.getTeachers();
@@ -27,15 +28,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
             Kelola data master civitas sekolah, akun pengguna 5 peran, sinkronisasi PostgreSQL, dan pengawasan audit sistem.
           </p>
         </div>
-        <div className="flex items-center gap-2.5 shrink-0">
-          <button
-            type="button"
-            onClick={() => onNavigate('students')}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors"
-          >
-            <PlusCircle className="w-4 h-4" />
-            <span>Kelola Siswa</span>
-          </button>
+        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          {onOpenImport && (
+            <button
+              type="button"
+              onClick={() => onOpenImport('students')}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-lg transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4" />
+              <span>Import Massal Excel / CSV</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onNavigate('users')}
@@ -85,15 +88,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate }) =>
           <div>
             <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <Database className="w-4 h-4 text-indigo-600" />
-              <span>Panduan Pengisian Data Asli Sekolah (Tanpa Data Dummy)</span>
+              <span>Pengisian Massal Data Asli Sekolah (Tanpa Dummy & Tanpa Input 1-per-1)</span>
             </h3>
             <p className="text-xs text-slate-500 mt-0.5">
-              Ikuti urutan berikut untuk memasukkan seluruh nama guru, kelas, siswa, dan akun login asli sekolah ke NeonDB:
+              Unggah atau copy-paste data dari Excel/Dapodik langsung sekaligus, atau lengkapi melalui langkah di bawah ini:
             </p>
           </div>
-          <span className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold self-start">
-            Tersimpan Permanen di PostgreSQL
-          </span>
+          {onOpenImport ? (
+            <button
+              type="button"
+              onClick={() => onOpenImport('academic')}
+              className="inline-flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold self-start transition-colors"
+            >
+              <FileSpreadsheet className="w-3.5 h-3.5" />
+              <span>Import Semua Data (Excel / CSV)</span>
+            </button>
+          ) : (
+            <span className="text-[11px] px-2.5 py-1 rounded-lg bg-slate-100 text-slate-700 font-semibold self-start">
+              Tersimpan Permanen di PostgreSQL
+            </span>
+          )}
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">

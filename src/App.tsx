@@ -24,7 +24,7 @@ import { AssessmentManagement } from './components/programs/AssessmentManagement
 import { MaterialManagement } from './components/programs/MaterialManagement';
 import { ReportManagement } from './components/reports/ReportManagement';
 import { AuditLogViewer } from './components/audit/AuditLogViewer';
-import { ImportExportModal } from './components/import-export/ImportExportModal';
+import { ImportExportModal, ImportModalTab } from './components/import-export/ImportExportModal';
 import { RestoreBackupPanel } from './components/admin/RestoreBackupPanel';
 import { LoginScreen } from './components/auth/LoginScreen';
 import { UserRole } from './types';
@@ -33,7 +33,13 @@ const AppContent: React.FC = () => {
   const { currentUser, role, syncVersion, refreshData } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [importModalTab, setImportModalTab] = useState<ImportModalTab>('students');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
+  const openImportModal = (tab: ImportModalTab = 'students') => {
+    setImportModalTab(tab);
+    setIsImportModalOpen(true);
+  };
 
   useEffect(() => {
     setActiveTab('dashboard');
@@ -49,7 +55,14 @@ const AppContent: React.FC = () => {
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard':
-        if (role === 'admin') return <AdminDashboard onNavigate={setActiveTab} />;
+        if (role === 'admin') {
+          return (
+            <AdminDashboard
+              onNavigate={setActiveTab}
+              onOpenImport={(tab) => openImportModal(tab || 'students')}
+            />
+          );
+        }
         if (role === 'counselor') return <CounselorDashboard onNavigate={setActiveTab} />;
         if (role === 'teacher') return <TeacherDashboard onNavigate={setActiveTab} />;
         if (role === 'student') return <StudentDashboard onNavigate={setActiveTab} />;
@@ -62,7 +75,7 @@ const AppContent: React.FC = () => {
       case 'students':
         return (
           <StudentManagement
-            onOpenImport={role === 'admin' ? () => setIsImportModalOpen(true) : undefined}
+            onOpenImport={role === 'admin' ? () => openImportModal('students') : undefined}
           />
         );
 
@@ -70,10 +83,18 @@ const AppContent: React.FC = () => {
         return <StudentManagement restrictedToClass={currentUser.assignedClass || ''} />;
 
       case 'teachers':
-        return <TeacherManagement />;
+        return (
+          <TeacherManagement
+            onOpenImport={role === 'admin' ? () => openImportModal('teachers') : undefined}
+          />
+        );
 
       case 'academic':
-        return <AcademicManagement />;
+        return (
+          <AcademicManagement
+            onOpenImport={role === 'admin' ? () => openImportModal('academic') : undefined}
+          />
+        );
 
       case 'counseling':
         return <CounselingManagement />;
@@ -102,7 +123,7 @@ const AppContent: React.FC = () => {
       case 'restore_backup':
       case 'import_export':
         return role === 'admin' ? (
-          <RestoreBackupPanel onOpenCsvModal={() => setIsImportModalOpen(true)} />
+          <RestoreBackupPanel onOpenCsvModal={() => openImportModal('academic')} />
         ) : (
           <CounselorDashboard onNavigate={setActiveTab} />
         );
@@ -138,11 +159,10 @@ const AppContent: React.FC = () => {
       {/* Global Modals */}
       <ImportExportModal
         isOpen={isImportModalOpen}
+        initialTab={importModalTab}
         onClose={() => setIsImportModalOpen(false)}
         onSuccess={async () => {
           await refreshData();
-          setIsImportModalOpen(false);
-          setActiveTab('students');
         }}
       />
     </div>

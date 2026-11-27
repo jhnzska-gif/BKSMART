@@ -118,7 +118,15 @@ export const RestoreBackupPanel: React.FC<RestoreBackupPanelProps> = ({ onOpenCs
         const hasKnownArray =
           Array.isArray(dataBlock.students) ||
           Array.isArray(dataBlock.users) ||
-          Array.isArray(dataBlock.counselingSessions);
+          Array.isArray(dataBlock.teachers) ||
+          Array.isArray(dataBlock.classes) ||
+          Array.isArray(dataBlock.majors) ||
+          Array.isArray(dataBlock.academicYears) ||
+          Array.isArray(dataBlock.counselingSessions) ||
+          Array.isArray(dataBlock.referrals) ||
+          Array.isArray(dataBlock.cases) ||
+          Array.isArray(dataBlock.programs) ||
+          Array.isArray(dataBlock.materials);
 
         if (!hasKnownArray) {
           throw new Error('File bukan format backup resmi BKSmart.');
@@ -151,9 +159,15 @@ export const RestoreBackupPanel: React.FC<RestoreBackupPanelProps> = ({ onOpenCs
     return {
       users: Array.isArray(d.users) ? d.users.length : 0,
       students: Array.isArray(d.students) ? d.students.length : 0,
+      teachers: Array.isArray(d.teachers) ? d.teachers.length : 0,
+      classes: Array.isArray(d.classes) ? d.classes.length : 0,
+      majors: Array.isArray(d.majors) ? d.majors.length : 0,
+      academicYears: Array.isArray(d.academicYears) ? d.academicYears.length : 0,
       counselingSessions: Array.isArray(d.counselingSessions) ? d.counselingSessions.length : 0,
       cases: Array.isArray(d.cases) ? d.cases.length : 0,
       referrals: Array.isArray(d.referrals) ? d.referrals.length : 0,
+      programs: Array.isArray(d.programs) ? d.programs.length : 0,
+      materials: Array.isArray(d.materials) ? d.materials.length : 0,
     };
   };
 
@@ -175,7 +189,7 @@ export const RestoreBackupPanel: React.FC<RestoreBackupPanelProps> = ({ onOpenCs
       );
       setStatusMessage({
         type: 'success',
-        text: `Restore berhasil! Dipulihkan: ${result.counts.students || 0} siswa, ${result.counts.users || 0} pengguna, ${result.counts.counselingSessions || 0} sesi konseling, dan ${result.counts.cases || 0} kasus.`,
+        text: `Restore berhasil! Dipulihkan: ${result.counts.students || 0} siswa, ${result.counts.teachers || 0} guru, ${result.counts.classes || 0} kelas, ${result.counts.majors || 0} jurusan, ${result.counts.users || 0} pengguna, dan ${result.counts.counselingSessions || 0} sesi konseling.`,
       });
       setParsedBackup(null);
       setBackupFileName('');
@@ -206,10 +220,29 @@ export const RestoreBackupPanel: React.FC<RestoreBackupPanelProps> = ({ onOpenCs
           <button
             type="button"
             onClick={onOpenCsvModal}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors shadow-2xs self-start sm:self-auto"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg transition-colors shadow-2xs self-start sm:self-auto"
           >
-            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-            <span>Import Batch Siswa (CSV)</span>
+            <FileSpreadsheet className="w-4 h-4" />
+            <span>Import Massal Data Sekolah (Excel / CSV)</span>
+          </button>
+        )}
+      </div>
+
+      <div className="p-4 rounded-xl bg-slate-900 text-white text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="space-y-1">
+          <p className="font-bold text-sm">Memasukkan Data Asli Sekolah Sekaligus (Tanpa Input Manual)</p>
+          <p className="text-slate-300 leading-relaxed">
+            Gunakan <strong>Import Massal Excel / CSV</strong> untuk copy-paste atau mengunggah daftar
+            Kelas/Jurusan, Guru BK & Wali Kelas, dan seluruh Siswa beserta akun loginnya langsung ke NeonDB.
+          </p>
+        </div>
+        {onOpenCsvModal && (
+          <button
+            type="button"
+            onClick={onOpenCsvModal}
+            className="px-3.5 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold shrink-0 self-start sm:self-auto transition-colors"
+          >
+            Buka Import Massal
           </button>
         )}
       </div>
@@ -335,8 +368,12 @@ export const RestoreBackupPanel: React.FC<RestoreBackupPanelProps> = ({ onOpenCs
                   Pratinjau File: <span className="font-mono">{backupFileName}</span>
                 </p>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-emerald-900">
-                  <span>Pengguna: {previewCounts.users}</span>
+                  <span>Tahun Ajaran: {previewCounts.academicYears}</span>
+                  <span>Jurusan: {previewCounts.majors}</span>
+                  <span>Kelas: {previewCounts.classes}</span>
+                  <span>Guru: {previewCounts.teachers}</span>
                   <span>Siswa: {previewCounts.students}</span>
+                  <span>Pengguna: {previewCounts.users}</span>
                   <span>Konseling: {previewCounts.counselingSessions}</span>
                   <span>Rujukan: {previewCounts.referrals}</span>
                   <span>Kasus: {previewCounts.cases}</span>

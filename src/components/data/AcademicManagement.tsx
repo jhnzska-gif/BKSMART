@@ -6,9 +6,13 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
 import { BatchActionBar } from '../common/BatchActionBar';
-import { Plus, Edit2, Trash2, FolderTree, BookOpen, Calendar } from 'lucide-react';
+import { Plus, Edit2, Trash2, FolderTree, BookOpen, Calendar, FileSpreadsheet } from 'lucide-react';
 
-export const AcademicManagement: React.FC = () => {
+interface AcademicManagementProps {
+  onOpenImport?: () => void;
+}
+
+export const AcademicManagement: React.FC<AcademicManagementProps> = ({ onOpenImport }) => {
   const [classes, setClasses] = useState<SchoolClass[]>(APIService.getClasses());
   const [majors, setMajors] = useState<Major[]>(APIService.getMajors());
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>(APIService.getAcademicYears());
@@ -200,13 +204,25 @@ export const AcademicManagement: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-          Kelas, Jurusan & Tahun Ajaran
-        </h2>
-        <p className="text-xs text-slate-500">
-          Lengkapi Tahun Ajaran, Program Keahlian / Jurusan, dan Rombongan Belajar (Kelas) sesuai data asli sekolah Anda
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+            Kelas, Jurusan & Tahun Ajaran
+          </h2>
+          <p className="text-xs text-slate-500">
+            Lengkapi Tahun Ajaran, Program Keahlian / Jurusan, dan Rombongan Belajar (Kelas) sesuai data asli sekolah Anda
+          </p>
+        </div>
+        {onOpenImport && (
+          <button
+            type="button"
+            onClick={onOpenImport}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors shadow-2xs self-start sm:self-auto"
+          >
+            <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+            <span>Import Massal Kelas & Jurusan (CSV)</span>
+          </button>
+        )}
       </div>
 
       {actionError && !isModalOpen && !isMajorModalOpen && !isYearModalOpen && (

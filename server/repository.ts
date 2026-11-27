@@ -416,6 +416,18 @@ export class BKSmartRepository {
     }
   }
 
+  static async importUsers(users: User[]): Promise<void> {
+    if (users.length === 0) return;
+    try {
+      for (const u of users) {
+        await this.saveUser(u);
+      }
+    } catch (error) {
+      console.error('importUsers failed:', error);
+      throw new Error('Gagal mengimpor akun pengguna.', { cause: error });
+    }
+  }
+
   static async deleteUsers(ids: string[]): Promise<void> {
     if (ids.length === 0) return;
     try {
@@ -570,6 +582,18 @@ export class BKSmartRepository {
     } catch (error) {
       console.error('saveTeacher failed:', error);
       throw new Error('Gagal menyimpan data guru.', { cause: error });
+    }
+  }
+
+  static async importTeachers(teachers: Teacher[]): Promise<void> {
+    if (teachers.length === 0) return;
+    try {
+      for (const t of teachers) {
+        await this.saveTeacher(t);
+      }
+    } catch (error) {
+      console.error('importTeachers failed:', error);
+      throw new Error('Gagal mengimpor data guru.', { cause: error });
     }
   }
 
@@ -751,6 +775,44 @@ export class BKSmartRepository {
     } catch (error) {
       console.error('deleteAcademicYears failed:', error);
       throw new Error('Gagal menghapus data tahun ajaran.', { cause: error });
+    }
+  }
+
+  static async importAcademic(payload: {
+    academicYears?: AcademicYear[];
+    majors?: Major[];
+    classes?: SchoolClass[];
+  }): Promise<{ academicYears: number; majors: number; classes: number }> {
+    const counts = { academicYears: 0, majors: 0, classes: 0 };
+    try {
+      if (Array.isArray(payload.academicYears)) {
+        for (const ay of payload.academicYears) {
+          if (ay?.year) {
+            await this.saveAcademicYear(ay);
+            counts.academicYears++;
+          }
+        }
+      }
+      if (Array.isArray(payload.majors)) {
+        for (const m of payload.majors) {
+          if (m?.name) {
+            await this.saveMajor(m);
+            counts.majors++;
+          }
+        }
+      }
+      if (Array.isArray(payload.classes)) {
+        for (const c of payload.classes) {
+          if (c?.name) {
+            await this.saveClass(c);
+            counts.classes++;
+          }
+        }
+      }
+      return counts;
+    } catch (error) {
+      console.error('importAcademic failed:', error);
+      throw new Error('Gagal mengimpor data akademik sekolah.', { cause: error });
     }
   }
 

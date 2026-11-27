@@ -95,6 +95,16 @@ export function createApiApp(): express.Express {
     }
   });
 
+  app.post('/api/users/import', async (req, res) => {
+    try {
+      const users = Array.isArray(req.body?.users) ? req.body.users : [];
+      await BKSmartRepository.importUsers(users);
+      res.json({ ok: true, count: users.length });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal mengimpor akun pengguna' });
+    }
+  });
+
   app.delete('/api/users/:id', async (req, res) => {
     try {
       await BKSmartRepository.deleteUsers([req.params.id]);
@@ -160,6 +170,16 @@ export function createApiApp(): express.Express {
       res.json(saved);
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menyimpan guru' });
+    }
+  });
+
+  app.post('/api/teachers/import', async (req, res) => {
+    try {
+      const teachers = Array.isArray(req.body?.teachers) ? req.body.teachers : [];
+      await BKSmartRepository.importTeachers(teachers);
+      res.json({ ok: true, count: teachers.length });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal mengimpor guru' });
     }
   });
 
@@ -246,6 +266,19 @@ export function createApiApp(): express.Express {
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menghapus tahun ajaran' });
+    }
+  });
+
+  app.post('/api/academic/import', async (req, res) => {
+    try {
+      const counts = await BKSmartRepository.importAcademic({
+        academicYears: Array.isArray(req.body?.academicYears) ? req.body.academicYears : [],
+        majors: Array.isArray(req.body?.majors) ? req.body.majors : [],
+        classes: Array.isArray(req.body?.classes) ? req.body.classes : [],
+      });
+      res.json({ ok: true, counts });
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal mengimpor data akademik' });
     }
   });
 

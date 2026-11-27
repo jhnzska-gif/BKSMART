@@ -7,9 +7,13 @@ import { ConfirmDialog } from '../common/ConfirmDialog';
 import { Badge } from '../common/Badge';
 import { Pagination } from '../common/Pagination';
 import { BatchActionBar } from '../common/BatchActionBar';
-import { Search, Plus, Edit2, Trash2 } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, FileSpreadsheet } from 'lucide-react';
 
-export const TeacherManagement: React.FC = () => {
+interface TeacherManagementProps {
+  onOpenImport?: () => void;
+}
+
+export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onOpenImport }) => {
   const { currentUser, role } = useAuth();
   const [teachers, setTeachers] = useState<Teacher[]>(APIService.getTeachers());
   const [searchTerm, setSearchTerm] = useState('');
@@ -170,24 +174,36 @@ export const TeacherManagement: React.FC = () => {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setActionError(null);
-            setEditingTeacher({
-              role: 'counselor',
-              gender: 'L',
-            });
-            setCreateAccount(true);
-            setAccountUsername('');
-            setAccountPassword('');
-            setIsModalOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Guru / Konselor</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenImport && (
+            <button
+              type="button"
+              onClick={onOpenImport}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors shadow-2xs"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Import Massal Guru (CSV)</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              setActionError(null);
+              setEditingTeacher({
+                role: 'counselor',
+                gender: 'L',
+              });
+              setCreateAccount(true);
+              setAccountUsername('');
+              setAccountPassword('');
+              setIsModalOpen(true);
+            }}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors shadow-xs"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Guru / Konselor</span>
+          </button>
+        </div>
       </div>
 
       <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-2xs flex items-center">
