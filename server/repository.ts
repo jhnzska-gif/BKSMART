@@ -628,6 +628,12 @@ export class BKSmartRepository {
     };
     try {
       const result = await withNeonRetry(async (pool) => {
+        const existingByName = await pool.query(
+          'SELECT id FROM school_classes WHERE LOWER(name) = LOWER($1) LIMIT 1',
+          [clean.name]
+        );
+        const targetId = existingByName.rows[0]?.id || clean.id;
+        clean.id = targetId;
         await pool.query(
           `INSERT INTO school_classes (id, name, grade, major_id, major_name, homeroom_teacher_id, homeroom_teacher_name, student_count, academic_year)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
@@ -682,6 +688,12 @@ export class BKSmartRepository {
     };
     try {
       const result = await withNeonRetry(async (pool) => {
+        const existingByCode = await pool.query(
+          'SELECT id FROM majors WHERE UPPER(code) = UPPER($1) LIMIT 1',
+          [clean.code]
+        );
+        const targetId = existingByCode.rows[0]?.id || clean.id;
+        clean.id = targetId;
         await pool.query(
           `INSERT INTO majors (id, code, name, head_of_major)
            VALUES ($1,$2,$3,$4)

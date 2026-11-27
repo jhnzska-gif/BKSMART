@@ -1082,6 +1082,31 @@ export class APIService {
     return ['sep=,', headers.join(','), sample.join(',')].join('\n');
   }
 
+  private static detectCSVFormat(rows: string[][]): 'academic' | 'teachers' | 'students' | 'unknown' {
+    const header = (rows[0] || []).map((c) => c.toLowerCase()).join(' | ');
+    if (
+      header.includes('tahun ajaran') &&
+      (header.includes('kode jurusan') || header.includes('nama jurusan') || header.includes('semester'))
+    ) {
+      return 'academic';
+    }
+    if (header.includes('peran') || (header.includes('nip') && (header.includes('spesialisasi') || header.includes('kelas binaan')))) {
+      return 'teachers';
+    }
+    if (header.includes('nisn') || (header.includes('nis') && header.includes('nama orang tua'))) {
+      return 'students';
+    }
+    const sample = rows[1] || [];
+    if (
+      sample.length >= 4 &&
+      ['ganjil', 'genap'].includes((sample[1] || '').trim().toLowerCase()) &&
+      ['ya', 'tidak', 'aktif'].includes((sample[2] || '').trim().toLowerCase())
+    ) {
+      return 'academic';
+    }
+    return 'unknown';
+  }
+
   static async importAcademicFromCSV(csvText: string): Promise<{
     academicYearsCreated: number;
     majorsCreated: number;
@@ -1095,6 +1120,28 @@ export class APIService {
         majorsCreated: 0,
         classesCreated: 0,
         errors: ['Data CSV/Excel kosong atau tidak memiliki baris data di bawah judul kolom.'],
+      };
+    }
+
+    const detected = this.detectCSVFormat(rows);
+    if (detected === 'students') {
+      return {
+        academicYearsCreated: 0,
+        majorsCreated: 0,
+        classesCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah DATA SISWA. Silakan pindah ke tab "3. Data Siswa" lalu tempel ulang di sana.',
+        ],
+      };
+    }
+    if (detected === 'teachers') {
+      return {
+        academicYearsCreated: 0,
+        majorsCreated: 0,
+        classesCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah DATA GURU / WALI KELAS. Silakan pindah ke tab "2. Guru BK & Wali Kelas".',
+        ],
       };
     }
 
@@ -1238,6 +1285,28 @@ export class APIService {
         accountsCreated: 0,
         classesCreated: 0,
         errors: ['Data CSV/Excel kosong atau tidak memiliki baris data di bawah judul kolom.'],
+      };
+    }
+
+    const detected = this.detectCSVFormat(rows);
+    if (detected === 'academic') {
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        classesCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah KELAS & JURUSAN. Silakan pindah ke tab "1. Kelas & Jurusan".',
+        ],
+      };
+    }
+    if (detected === 'students') {
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        classesCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah DATA SISWA. Silakan pindah ke tab "3. Data Siswa".',
+        ],
       };
     }
 
@@ -1390,6 +1459,30 @@ export class APIService {
         classesCreated: 0,
         majorsCreated: 0,
         errors: ['File CSV kosong atau tidak memiliki baris data di bawah judul kolom.'],
+      };
+    }
+
+    const detected = this.detectCSVFormat(rows);
+    if (detected === 'academic') {
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        classesCreated: 0,
+        majorsCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah data KELAS & JURUSAN, bukan DATA SISWA! Silakan pindah ke tab "1. Kelas & Jurusan" di atas lalu tempel di sana.',
+        ],
+      };
+    }
+    if (detected === 'teachers') {
+      return {
+        importedCount: 0,
+        accountsCreated: 0,
+        classesCreated: 0,
+        majorsCreated: 0,
+        errors: [
+          'Format data yang Anda masukkan adalah data GURU BK & WALI KELAS, bukan DATA SISWA! Silakan pindah ke tab "2. Guru BK & Wali Kelas".',
+        ],
       };
     }
 
