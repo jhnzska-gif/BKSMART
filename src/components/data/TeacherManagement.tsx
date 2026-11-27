@@ -18,7 +18,7 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onOpenImpo
   const [teachers, setTeachers] = useState<Teacher[]>(APIService.getTeachers());
   const [searchTerm, setSearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isMultiDeleteModalOpen, setIsMultiDeleteModalOpen] = useState(false);
@@ -274,15 +274,21 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onOpenImpo
                     </td>
                     <td className="px-4 py-3 font-mono text-slate-600 tabular-nums">{t.nip}</td>
                     <td className="px-4 py-3">
-                      <Badge variant={t.role === 'counselor' ? 'emerald' : 'amber'}>
-                        {t.role === 'counselor' ? 'Guru BK (Konselor)' : 'Wali Kelas / Guru Mapel'}
+                      <Badge variant={t.role === 'counselor' ? 'emerald' : t.assignedClass ? 'amber' : 'slate'}>
+                        {t.role === 'counselor'
+                          ? 'Guru BK (Konselor)'
+                          : t.assignedClass
+                            ? 'Wali Kelas'
+                            : 'Guru'}
                       </Badge>
                     </td>
                     <td className="px-4 py-3">
                       {t.role === 'counselor' ? (
-                        <span className="text-slate-800 font-medium">{t.specialization || 'Umum'}</span>
+                        <span className="text-slate-800 font-medium">{t.specialization || 'Layanan BK'}</span>
+                      ) : t.assignedClass ? (
+                        <span className="text-slate-700">Wali Kelas: <strong>{t.assignedClass}</strong></span>
                       ) : (
-                        <span className="text-slate-700">Wali Kelas: <strong>{t.assignedClass || '-'}</strong></span>
+                        <span className="text-slate-400">Tenaga Pendidik</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -321,7 +327,7 @@ export const TeacherManagement: React.FC<TeacherManagementProps> = ({ onOpenImpo
           itemsPerPage={itemsPerPage}
           onPageChange={setCurrentPage}
           onItemsPerPageChange={setItemsPerPage}
-          pageSizeOptions={[5, 10, 20]}
+          pageSizeOptions={[10, 25, 50]}
         />
       </div>
 

@@ -1454,6 +1454,46 @@ var BKSmartRepository = class {
     }
   }
   // ASSESSMENTS
+  static async saveAssessment(asm) {
+    try {
+      const pool = await ensureNeonReady();
+      if (!pool) {
+        const idx = memoryStore.assessments.findIndex((a) => a.id === asm.id);
+        if (idx !== -1) memoryStore.assessments[idx] = asm;
+        else memoryStore.assessments.push(asm);
+        return asm;
+      }
+      await pool.query(
+        `INSERT INTO assessments (id, title, code, description, target_class, questions, deadline, status, submission_count, total_target)
+         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10)
+         ON CONFLICT (id) DO UPDATE SET
+           title = EXCLUDED.title,
+           description = EXCLUDED.description,
+           target_class = EXCLUDED.target_class,
+           questions = EXCLUDED.questions,
+           deadline = EXCLUDED.deadline,
+           status = EXCLUDED.status,
+           submission_count = EXCLUDED.submission_count,
+           total_target = EXCLUDED.total_target`,
+        [
+          asm.id,
+          asm.title,
+          asm.code,
+          asm.description ?? "",
+          asm.targetClass ?? "Semua Kelas",
+          JSON.stringify(asm.questions || []),
+          asm.deadline,
+          asm.status ?? "active",
+          asm.submissionCount ?? 0,
+          asm.totalTarget ?? 0
+        ]
+      );
+      return asm;
+    } catch (error) {
+      console.error("saveAssessment failed:", error);
+      throw new Error("Gagal menyimpan asesmen BK.", { cause: error });
+    }
+  }
   static async saveSubmission(sub) {
     try {
       const pool = await ensureNeonReady();
@@ -2020,6 +2060,14 @@ function createApiApp() {
       res.json({ ok: true, count: ids.length });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : "Gagal menghapus program BK terpilih" });
+    }
+  });
+  app2.post("/api/assessments", async (req, res) => {
+    try {
+      const saved = await BKSmartRepository.saveAssessment(req.body);
+      res.json(saved);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : "Gagal menyimpan asesmen" });
     }
   });
   app2.post("/api/assessments/submit", async (req, res) => {

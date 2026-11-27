@@ -141,7 +141,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ onNavigate }
                 <div key={s.id} className="py-2.5 flex items-center justify-between">
                   <div>
                     <p className="font-semibold text-slate-900">{s.name}</p>
-                    <p className="text-[11px] text-slate-500 font-mono">NISN: {s.nisn} · Ortu: {s.parentName}</p>
+                    <p className="text-[11px] text-slate-500 font-mono">NISN: {s.nisn} · NIS: {s.nis}</p>
                   </div>
                   <button
                     type="button"

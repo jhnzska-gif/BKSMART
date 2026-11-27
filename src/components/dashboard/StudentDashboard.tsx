@@ -11,11 +11,16 @@ interface StudentDashboardProps {
 
 export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }) => {
   const { currentUser } = useAuth();
-  const studentName = currentUser?.name || 'Rizky Pratama';
+  const studentName = currentUser?.name || 'Siswa';
+  const studentClass = currentUser?.assignedClass || 'Siswa Aktif';
 
-  const mySessions = APIService.getCounselingSessions().filter(s => s.studentName.toLowerCase().includes('rizky'));
+  const mySessions = APIService.getCounselingSessions().filter(
+    s => s.studentId === currentUser?.id || s.studentName.toLowerCase() === studentName.toLowerCase()
+  );
   const assessments = APIService.getAssessments().filter(a => a.status === 'active');
-  const mySubmissions = APIService.getSubmissions().filter(s => s.studentName.toLowerCase().includes('rizky'));
+  const mySubmissions = APIService.getSubmissions().filter(
+    s => s.studentId === currentUser?.id || s.studentName.toLowerCase() === studentName.toLowerCase()
+  );
   const materials = APIService.getMaterials();
 
   return (
@@ -25,7 +30,7 @@ export const StudentDashboard: React.FC<StudentDashboardProps> = ({ onNavigate }
         <div>
           <div className="flex items-center gap-2">
             <h1 className="text-xl font-bold tracking-tight">Halo, {studentName}!</h1>
-            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 font-mono font-medium">Siswa XI RPL 1</span>
+            <span className="text-xs px-2 py-0.5 rounded bg-blue-500/30 text-blue-200 font-mono font-medium">{studentClass}</span>
           </div>
           <p className="text-sm text-blue-100 mt-1 max-w-2xl">
             Selamat datang di BKSmart. Ruang bimbingan konseling hadir untuk mendukung kesuksesan belajar, pengembangan bakat, dan rencana masa depanmu.

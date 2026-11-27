@@ -843,8 +843,6 @@ export class APIService {
       'Kelas',
       'Jurusan',
       'Tahun Ajaran',
-      'Nama Orang Tua',
-      'No HP Ortu',
       'No HP Siswa',
       'Status',
     ];
@@ -856,8 +854,6 @@ export class APIService {
       `"${s.className}"`,
       `"${s.majorName}"`,
       `"${s.academicYear}"`,
-      `"${s.parentName}"`,
-      `"${s.parentPhone}"`,
       `"${s.studentPhone}"`,
       `"${s.status}"`,
     ]);
@@ -963,8 +959,6 @@ export class APIService {
         'Kelas',
         'Jurusan',
         'Tahun Ajaran',
-        'Nama Orang Tua',
-        'No HP Ortu',
         'No HP Siswa',
       ],
       [
@@ -975,8 +969,6 @@ export class APIService {
         'X RPL 1',
         'Rekayasa Perangkat Lunak',
         defaultAcademicYear(),
-        'Nama Wali',
-        '0812-3456-7890',
         '0813-9988-7766',
       ],
     ];
@@ -1046,8 +1038,6 @@ export class APIService {
       'Kelas',
       'Jurusan',
       'Tahun Ajaran',
-      'Nama Orang Tua',
-      'No HP Ortu',
       'No HP Siswa',
       'Status',
     ];
@@ -1059,8 +1049,6 @@ export class APIService {
       s.className,
       s.majorName,
       s.academicYear,
-      s.parentName,
-      s.parentPhone,
       s.studentPhone,
       s.status,
     ]);
@@ -1093,7 +1081,7 @@ export class APIService {
     if (header.includes('peran') || (header.includes('nip') && (header.includes('spesialisasi') || header.includes('kelas binaan')))) {
       return 'teachers';
     }
-    if (header.includes('nisn') || (header.includes('nis') && header.includes('nama orang tua'))) {
+    if (header.includes('nisn') || (header.includes('nis') && (header.includes('nama lengkap') || header.includes('nama siswa') || header.includes('nama orang tua')))) {
       return 'students';
     }
     const sample = rows[1] || [];
@@ -1508,6 +1496,9 @@ export class APIService {
     const touchedClasses = new Map<string, SchoolClass>();
     let classesCreated = 0;
 
+    const headerLower = (rows[0] || []).map((c) => c.toLowerCase());
+    const hasParentCols = headerLower.some((h) => h.includes('orang tua') || h.includes('ortu'));
+
     for (let i = 1; i < rows.length; i++) {
       const cols = rows[i];
       if (cols.length < 3) {
@@ -1522,10 +1513,10 @@ export class APIService {
         classNameRaw,
         majorNameRaw,
         academicYearRaw,
-        parentNameRaw,
-        parentPhoneRaw,
-        studentPhoneRaw,
       ] = cols;
+      const parentNameRaw = hasParentCols ? cols[7] : '';
+      const parentPhoneRaw = hasParentCols ? cols[8] : '';
+      const studentPhoneRaw = hasParentCols ? cols[9] : cols[7];
 
       const name = (nameRaw || '').trim();
       if (!name) {

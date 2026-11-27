@@ -399,6 +399,15 @@ export function createApiApp(): express.Express {
   });
 
   // ASSESSMENTS
+  app.post('/api/assessments', async (req, res) => {
+    try {
+      const saved = await BKSmartRepository.saveAssessment(req.body);
+      res.json(saved);
+    } catch (error) {
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Gagal menyimpan asesmen' });
+    }
+  });
+
   app.post('/api/assessments/submit', async (req, res) => {
     try {
       const saved = await BKSmartRepository.saveSubmission(req.body);

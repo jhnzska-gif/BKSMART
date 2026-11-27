@@ -306,7 +306,7 @@ export const ImportExportModal: React.FC<ImportExportModalProps> = ({
       title: 'Template Excel Data Siswa Asli',
       desc: 'Unduh file .xlsx, isi atau tempel daftar siswa dari Dapodik/Excel — kelas, jurusan & akun siswa dibuat otomatis.',
       placeholder:
-        'NISN\tNIS\tNama Lengkap\tJenis Kelamin (L/P)\tKelas\tJurusan\tTahun Ajaran\tNama Orang Tua\tNo HP Ortu\tNo HP Siswa',
+        'NISN\tNIS\tNama Lengkap\tJenis Kelamin (L/P)\tKelas\tJurusan\tTahun Ajaran\tNo HP Siswa',
       cta: 'Proses Import Siswa',
     };
   };

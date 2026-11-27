@@ -62,7 +62,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ onNavigate, onOp
         <StatCard
           title="Guru & Tenaga BK"
           value={teachers.length}
-          subtitle={`${teachers.filter(t => t.role === 'counselor').length} Guru BK, ${teachers.filter(t => t.role === 'teacher').length} Wali Kelas`}
+          subtitle={`${teachers.filter(t => t.role === 'counselor').length} Guru BK, ${teachers.filter(t => t.role === 'teacher').length} Guru & Wali Kelas`}
           color="emerald"
           icon={<Users className="w-5 h-5" />}
         />

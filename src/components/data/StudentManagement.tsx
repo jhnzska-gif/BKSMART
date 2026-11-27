@@ -28,7 +28,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterClass, setFilterClass] = useState<string>('all');
   const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState(5);
+  const [itemsPerPage, setItemsPerPage] = useState(10);
 
   // Selection state for multi-delete
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -345,7 +345,6 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                 <th className="px-4 py-3">Siswa</th>
                 <th className="px-4 py-3">NISN / NIS</th>
                 <th className="px-4 py-3">Kelas & Jurusan</th>
-                <th className="px-4 py-3">Orang Tua / Wali</th>
                 <th className="px-4 py-3">Status</th>
                 {canEdit && <th className="px-4 py-3 text-right">Aksi</th>}
               </tr>
@@ -353,7 +352,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
             <tbody className="divide-y divide-slate-100">
               {paginatedStudents.length === 0 ? (
                 <tr>
-                  <td colSpan={canEdit ? 7 : 6} className="px-4 py-8 text-center text-slate-400">
+                  <td colSpan={canEdit ? 6 : 5} className="px-4 py-8 text-center text-slate-400">
                     Tidak ada data siswa yang sesuai filter.
                   </td>
                 </tr>
@@ -401,10 +400,6 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
                       <td className="px-4 py-3">
                         <div className="font-medium text-slate-900">{s.className}</div>
                         <div className="text-[11px] text-slate-500">{s.majorName}</div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-slate-900">{s.parentName}</div>
-                        <div className="text-[11px] text-slate-500 font-mono">{s.parentPhone}</div>
                       </td>
                       <td className="px-4 py-3">
                         <Badge variant={s.status === 'active' ? 'emerald' : 'slate'}>
@@ -456,7 +451,7 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
             setItemsPerPage(limit);
             setCurrentPage(1);
           }}
-          pageSizeOptions={[5, 10, 20, 50]}
+          pageSizeOptions={[10, 20, 36, 50]}
         />
       </div>
 
@@ -583,21 +578,21 @@ export const StudentManagement: React.FC<StudentManagementProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label className="block font-medium text-slate-700 mb-1">Nama Orang Tua / Wali</label>
+              <label className="block font-medium text-slate-700 mb-1">Tahun Ajaran</label>
               <input
                 type="text"
-                value={editingStudent?.parentName || ''}
-                onChange={(e) => setEditingStudent({ ...editingStudent, parentName: e.target.value })}
-                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-slate-900"
-                placeholder="Nama ayah / ibu / wali"
+                value={editingStudent?.academicYear || ''}
+                onChange={(e) => setEditingStudent({ ...editingStudent, academicYear: e.target.value })}
+                className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
+                placeholder="2026/2027"
               />
             </div>
             <div>
-              <label className="block font-medium text-slate-700 mb-1">No HP Orang Tua / WhatsApp</label>
+              <label className="block font-medium text-slate-700 mb-1">No HP Siswa / WhatsApp (Opsional)</label>
               <input
                 type="text"
-                value={editingStudent?.parentPhone || ''}
-                onChange={(e) => setEditingStudent({ ...editingStudent, parentPhone: e.target.value })}
+                value={editingStudent?.studentPhone || ''}
+                onChange={(e) => setEditingStudent({ ...editingStudent, studentPhone: e.target.value })}
                 className="w-full px-3 py-1.5 border border-slate-300 rounded-lg font-mono focus:outline-none focus:ring-1 focus:ring-slate-900"
                 placeholder="0812-xxxx-xxxx"
               />
