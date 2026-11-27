@@ -7,6 +7,14 @@ export function createApiApp(): express.Express {
   const jsonParser = express.json({ limit: '5mb' });
 
   app.use((req, res, next) => {
+    if (
+      req.body !== undefined &&
+      req.body !== null &&
+      typeof req.body === 'object' &&
+      !Buffer.isBuffer(req.body)
+    ) {
+      return next();
+    }
     if (req.readable === false && req.body !== undefined) {
       return next();
     }

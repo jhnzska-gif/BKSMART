@@ -194,13 +194,16 @@ export class APIService {
       }
 
       if (!response.ok || !json?.user) {
+        const isHtmlResponse = rawText.trim().startsWith('<');
         return {
           ok: false,
           error:
             json?.error ||
-            (response.status === 404
-              ? 'Endpoint API autentikasi (/api/auth/login) tidak ditemukan (404).'
-              : `Server autentikasi merespons error (HTTP ${response.status}).`),
+            (isHtmlResponse
+              ? 'Endpoint /api/auth/login mengembalikan halaman HTML. Pastikan file api/index.js dan vercel.json sudah ter-deploy di Vercel.'
+              : response.status === 404
+                ? 'Endpoint API autentikasi (/api/auth/login) tidak ditemukan (404).'
+                : `Server autentikasi merespons error (HTTP ${response.status}).`),
         };
       }
       return { ok: true, user: json.user as User };
